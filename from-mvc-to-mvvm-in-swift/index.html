@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+  <head>
+  <link href="http://gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <!-- Enable responsiveness on mobile devices-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+  <title>
+    
+      From MVC to MVVM in Swift &middot; Srdan Rasic
+    
+  </title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/public/css/poole.css">
+  <link rel="stylesheet" href="/public/css/syntax.css">
+  <link rel="stylesheet" href="/public/css/lanyon.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=PT+Serif:400,400italic,700%7CPT+Sans:400">
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/public/apple-touch-icon-precomposed.png">
+  <link rel="shortcut icon" href="/public/favicon.ico">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/atom.xml">
+</head>
+
+
+  <body class="theme-base-08 layout-reverse">
+
+    <!-- Target for toggling the sidebar `.sidebar-checkbox` is for regular
+     styles, `#sidebar-checkbox` for behavior. -->
+<input type="checkbox" class="sidebar-checkbox" id="sidebar-checkbox">
+
+<!-- Toggleable sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-item">
+    <p></p>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a class="sidebar-nav-item" href="/">Blog</a>
+
+    
+
+    
+    
+      
+        
+      
+    
+      
+        
+      
+    
+      
+        
+          <a class="sidebar-nav-item" href="/about.html">About</a>
+        
+      
+    
+      
+    
+      
+    
+      
+    
+
+    <a class="sidebar-nav-item" href="https://www.github.com/srdanrasic">GitHub</a>
+    <a class="sidebar-nav-item" href="https://www.twitter.com/srdanrasic">Twitter</a>
+  </nav>
+
+  <div class="sidebar-item">
+    <p>
+      &copy; 2016. All rights reserved.
+    </p>
+  </div>
+</div>
+
+
+    <!-- Wrap is the content to shift when toggling the sidebar. We wrap the
+         content to avoid any CSS collisions with our real content. -->
+    <div class="wrap">
+      <div class="masthead">
+        <div class="container">
+          <h3 class="masthead-title">
+            <a href="/" title="Home">Srdan Rasic</a>
+            <small>A software engineer</small>
+          </h3>
+        </div>
+      </div>
+
+      <div class="container content">
+        <div class="post">
+  <h1 class="post-title">From MVC to MVVM in Swift</h1>
+  <span class="post-date">07 Dec 2014</span>
+  <p>For the past year and a half I’ve been working on a project that’s grown from a simple news reading phone app to a full-blown virtual newspaper for both phones and tablets. Following Apple’s <a href="https://developer.apple.com/library/ios/documentation/General/Conceptual/DevPedia-CocoaCore/MVC.html">advice</a> and sticking with Model-View-Controller (MVC) design pattern seemed like a good idea at first, but as the app continued to grow, logic that drove some parts of it started to became complex to the point where making changes was accompanied with the feeling of unease and fixing issues in one part of the code with the fear of causing new bugs in some other parts. It would not be fair to blame only MVC for that - of course that some problems are caused by bad programming, lack of experience and the pressure of hard deadlines - but MVC is not well-wisher either. Thinking only in the terms of model, view and controller, one can miss some useful possibilities of how responsibilities can be further separated and dependency graph simplified. In following paragraphs I’ll present a situation where MVC can be improved by expanding it to MVVM (I’ll explain what that is later).</p>
+
+<p>Note that this post is not an advocate of MVVM nor does it present MVVM as an alternative to MVC, rather it shows a way to improve MVC in certain scenarios.</p>
+
+<p>To avoid any confusion let me define what I mean by ‘view’ in this post. View would be a screen or part of it that presents a set of data. For example, a collection view cell that’s made up of an image view and a title label. Or a story screen made up of a title label, a date label and a body text view. In other words, by the view I don’t mean UIView.</p>
+
+<p>Say we need a view (screen) that displays a news article. It should show article body, its title and publication date. As views in UIKit are tightly coupled with controllers, hence the name <em>view controller</em>, and since we’re not interested in view’s layout let’s start by defining our view as a view controller.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">ArticleViewController</span><span class="p">:</span> <span class="kt">UIViewController</span> <span class="p">{</span>
+  <span class="k">var</span> <span class="nv">bodyTextView</span><span class="p">:</span> <span class="kt">UITextView</span>
+  <span class="k">var</span> <span class="nv">titleLabel</span><span class="p">:</span> <span class="kt">UILabel</span>
+  <span class="k">var</span> <span class="nv">dateLabel</span><span class="p">:</span> <span class="kt">UILabel</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>Next, we need some data to populate the view. Let’s define article model as a class with few properties. You can ignore thumbnail and saved properties for now - we’ll use those later.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">Article</span> <span class="p">{</span>
+  <span class="k">var</span> <span class="nv">title</span><span class="p">:</span> <span class="kt">String</span>
+  <span class="k">var</span> <span class="nv">body</span><span class="p">:</span> <span class="kt">String</span>
+  <span class="k">var</span> <span class="nv">date</span><span class="p">:</span> <span class="kt">NSDate</span>
+  <span class="k">var</span> <span class="nv">thumbnail</span><span class="p">:</span> <span class="kt">NSURL</span>
+  <span class="k">var</span> <span class="nv">saved</span><span class="p">:</span> <span class="kt">Bool</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>What’s left is to populate the view, i.e. body text view and title and date label, with the model. In MVC architecture that’s a job for the controller so let’s do it. It’s quite simple.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">ArticleViewController</span><span class="p">:</span> <span class="kt">UIViewController</span> <span class="p">{</span>
+  <span class="k">var</span> <span class="nv">bodyTextView</span><span class="p">:</span> <span class="kt">UITextView</span>
+  <span class="k">var</span> <span class="nv">titleLabel</span><span class="p">:</span> <span class="kt">UILabel</span>
+  <span class="k">var</span> <span class="nv">dateLabel</span><span class="p">:</span> <span class="kt">UILabel</span>
+
+  <span class="k">var</span> <span class="nv">article</span><span class="p">:</span> <span class="kt">Article</span> <span class="p">{</span>
+    <span class="k">didSet</span> <span class="p">{</span>
+      <span class="n">titleLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">article</span><span class="o">.</span><span class="n">title</span>
+      <span class="n">bodyTextView</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">article</span><span class="o">.</span><span class="n">body</span>
+
+      <span class="k">let</span> <span class="nv">dateFormatter</span> <span class="o">=</span> <span class="kt">NSDateFormatter</span><span class="p">()</span>
+      <span class="n">dateFormatter</span><span class="o">.</span><span class="n">dateStyle</span> <span class="o">=</span> <span class="kt">NSDateFormatterStyle</span><span class="o">.</span><span class="kt">ShortStyle</span>
+      <span class="n">dateLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">dateFormatter</span><span class="o">.</span><span class="nf">stringFromDate</span><span class="p">(</span><span class="n">article</span><span class="o">.</span><span class="n">date</span><span class="p">)</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>We’ve defined a property for the model object, <em>article</em>, and used a neat Swift feature - <a href="https://developer.apple.com/library/ios/documentation/swift/conceptual/Swift_Programming_Language/Properties.html#//apple_ref/doc/uid/TP40014097-CH14-XID_390">Property observer</a> - to execute code whenever the property is set. (Be careful: property observers are not called when setting property from the constructor!). Whenever someone sets the property, we’ll populate the view with newly set Article object. Notice how we have to process the model to get proper data. Date label wants string on its input, but our model has NSDate object.</p>
+
+<p>Now, consider a situation where you have a fully implemented article view controller like the one we’ve just defined, and the requirement arises that you need to support some other kind of the article model, let’s say, one that’s defined as a dictionary. (This is just an example to show the point. Having model as dictionary is bad practice.)</p>
+
+<div class="language-js highlighter-rouge"><pre class="highlight"><code><span class="p">{</span>
+  <span class="s2">"title"</span><span class="err">:</span> <span class="s2">"&lt;string&gt;"</span><span class="p">,</span>
+  <span class="s2">"body"</span><span class="err">:</span> <span class="s2">"&lt;string&gt;"</span><span class="p">,</span>
+  <span class="s2">"date"</span><span class="err">:</span> <span class="s2">"&lt;json_date&gt;"</span><span class="p">,</span>
+  <span class="s2">"thumbnail"</span><span class="err">:</span> <span class="s2">"&lt;url&gt;"</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>How do you proceed? A straightforward approach could be to define another property, say <em>articleAsDictionary</em> that populates the view with that dictionary.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">ArticleViewController</span><span class="p">:</span> <span class="kt">UIViewController</span> <span class="p">{</span>
+  <span class="c1">// now we must change article to optional type</span>
+  <span class="k">var</span> <span class="nv">article</span><span class="p">:</span> <span class="kt">Article</span><span class="p">?</span> <span class="p">{</span>
+    <span class="k">didSet</span> <span class="p">{</span>
+      <span class="k">if</span> <span class="k">let</span> <span class="nv">article</span> <span class="o">=</span> <span class="n">article</span> <span class="p">{</span>
+        <span class="c1">// ...</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+
+  <span class="c1">// additional model</span>
+  <span class="k">var</span> <span class="nv">articleAsDictionary</span><span class="p">:</span> <span class="p">[</span><span class="kt">String</span><span class="p">:</span><span class="kt">AnyObject</span><span class="p">]?</span> <span class="p">{</span>
+    <span class="k">didSet</span> <span class="p">{</span>
+      <span class="k">if</span> <span class="k">let</span> <span class="nv">article</span> <span class="o">=</span> <span class="n">articleAsDictionary</span> <span class="p">{</span>
+        <span class="n">titleLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">article</span><span class="p">[</span><span class="s">"title"</span><span class="p">]</span> <span class="k">as</span> <span class="kt">String</span><span class="p">?</span>
+        <span class="n">bodyTextView</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">article</span><span class="p">[</span><span class="s">"body"</span><span class="p">]</span> <span class="k">as</span> <span class="kt">String</span><span class="p">?</span>
+
+        <span class="k">if</span> <span class="k">let</span> <span class="nv">jsonDate</span> <span class="o">=</span> <span class="n">article</span><span class="p">[</span><span class="s">"date"</span><span class="p">]</span> <span class="k">as</span> <span class="kt">String</span><span class="p">?</span> <span class="p">{</span>
+          <span class="n">dateLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="cm">/* parse and format date from jsonDate - ouch! */</span>
+        <span class="p">}</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+
+  <span class="c1">// ...</span>
+  <span class="c1">// any subsequent interaction with the model would result in:</span>
+  <span class="c1">//</span>
+  <span class="c1">// if let article = article {</span>
+  <span class="c1">//  proceed as article as Article</span>
+  <span class="c1">// } else if let article = articleAsDictionary {</span>
+  <span class="c1">//  proceed as article as Dictionary</span>
+  <span class="c1">// } else {</span>
+  <span class="c1">//   handle no article case</span>
+  <span class="c1">// } </span>
+  <span class="c1">// ...</span>
+
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>Don’t ever do this! Any interaction with your model will have to be conditionally handled - a lot of if-s that check what model you’re actually working with as explained in the comment above - and that results in messy and overly complex code that’s hard to read, hard to improve and susceptible to bugs.</p>
+
+<p>A better solution that might have come to your mind it to convert dictionaries to Article objects. But what if Article is a managed object in Core data? We cannot instantiate it without having a managed object context. Also, defining a common protocol that all article models conform to would not work well for our dictionary and would not support a feature we’ll introduce later. We need something different that will still allow us to be independent of a kind of model we might get.</p>
+
+<p>Before continuing to the solution, consider one more thing. Our example of a controller is very simple and in practice it can be more complicated. Remember how we had to process NSDate to get the date in some user-friendlier string format? Not a big deal we might say, but what if we also needed the article view to display that photo thumbnail we’ve defined in the model earlier. Because our model doesn’t have an image, rather a URL to the image, we’d have to additionally burden the controller with networking and downloading logic and maybe even some image processing logic. Think about what else does the controller usually do. To mention a few roles: it listens for orientation changes and adjusts views as necessary, handles events like button taps or view scrolls, acts on gesture recognizer actions, worries about state preservation, controls status and navigation bars and can manage memory. Burdening it with model processing should be avoided when possible. This is a second issue we’ll try to solve with MVVM pattern.</p>
+
+<p>In the architecture design one should always aim for simple components (classes). Achieving that often comes in the form of restricting their roles and inputs. That’s exactly what we’ll do to our view controller. We’ll take all the model processing logic out and explicitly define what’s expected on the input. The most elegant way to do this is to define a protocol that specifies what exactly view (controller) displays. That’ll be our view model.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">protocol</span> <span class="kt">ArticleViewViewModel</span> <span class="p">{</span>
+  <span class="k">var</span> <span class="nv">title</span><span class="p">:</span> <span class="kt">String</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span>
+  <span class="k">var</span> <span class="nv">body</span><span class="p">:</span> <span class="kt">String</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span>
+  <span class="k">var</span> <span class="nv">date</span><span class="p">:</span> <span class="kt">String</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>As you can see, the view model protocol defines input exactly in the types the view needs. All properties are of String type. Date is String because date label expects String on its input. Also note that we’re requiring only getters for the properties - we’ll not be setting any of them from the view controller.</p>
+
+<p>MVVM stands for Model-View-ViewModel. What we’re building here might make more sense to be called Model-View-ViewController-ViewModel, but as view and controller are so closely tied into view controller, from the perspective of MVVM we can think of the view controller as the ‘view’ part of it. We’ll stick with MVVM for the sake of simplicity.</p>
+
+<p>Let’s refactor our article view controller so is accepts view model instead of various models.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">ArticleViewController</span><span class="p">:</span> <span class="kt">UIViewController</span> <span class="p">{</span>
+  <span class="k">var</span> <span class="nv">bodyTextView</span><span class="p">:</span> <span class="kt">UITextView</span>
+  <span class="k">var</span> <span class="nv">titleLabel</span><span class="p">:</span> <span class="kt">UILabel</span>
+  <span class="k">var</span> <span class="nv">dateLabel</span><span class="p">:</span> <span class="kt">UILabel</span>
+
+  <span class="k">var</span> <span class="nv">viewModel</span><span class="p">:</span> <span class="kt">ArticleViewViewModel</span> <span class="p">{</span>
+    <span class="k">didSet</span> <span class="p">{</span>
+      <span class="n">titleLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">viewModel</span><span class="o">.</span><span class="n">title</span>
+      <span class="n">bodyTextView</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">viewModel</span><span class="o">.</span><span class="n">body</span>
+      <span class="n">dateLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">viewModel</span><span class="o">.</span><span class="n">date</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>Isn’t that just beautiful. All we had to do is map view model properties to our labels. We’ve made the view controller independent of the model and we threw out all ugly stuff like date formatting or checking what model type do we actually work with. That’s great but we still need to get actual data somehow. As you’ve already guessed it, it’ll be done in a concrete implementation of the view model.</p>
+
+<p>There are few ways to make concrete view model. If you’re familiar with Swift <a href="https://developer.apple.com/library/ios/documentation/Swift/Conceptual/Swift_Programming_Language/Extensions.html">extensions</a> you could extend Article to conform to ArticleViewViewModel protocol. That’s great solution and would work for our Article example, but not for the dictionary and for the reason which will become obvious in next post. Instead, we’ll use different approach. We’ll create a new class that adopts ArticleViewViewModel protocol and needs an Article object on the input.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">ArticleViewViewModelFromArticle</span><span class="p">:</span> <span class="kt">ArticleViewViewModel</span> <span class="p">{</span>
+  <span class="k">let</span> <span class="nv">article</span><span class="p">:</span> <span class="kt">Article</span>
+  <span class="k">let</span> <span class="nv">title</span><span class="p">:</span> <span class="kt">String</span>
+  <span class="k">let</span> <span class="nv">body</span><span class="p">:</span> <span class="kt">String</span>
+  <span class="k">let</span> <span class="nv">date</span><span class="p">:</span> <span class="kt">String</span>
+  
+  <span class="nf">init</span><span class="p">(</span><span class="n">_</span> <span class="nv">article</span><span class="p">:</span> <span class="kt">Article</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">article</span> <span class="o">=</span> <span class="n">article</span>
+    
+    <span class="k">self</span><span class="o">.</span><span class="n">title</span> <span class="o">=</span> <span class="n">article</span><span class="o">.</span><span class="n">title</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="n">article</span><span class="o">.</span><span class="n">body</span>
+    
+    <span class="k">let</span> <span class="nv">dateFormatter</span> <span class="o">=</span> <span class="kt">NSDateFormatter</span><span class="p">()</span>
+    <span class="n">dateFormatter</span><span class="o">.</span><span class="n">dateStyle</span> <span class="o">=</span> <span class="kt">NSDateFormatterStyle</span><span class="o">.</span><span class="kt">ShortStyle</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">date</span> <span class="o">=</span> <span class="n">dateFormatter</span><span class="o">.</span><span class="nf">stringFromDate</span><span class="p">(</span><span class="n">article</span><span class="o">.</span><span class="n">date</span><span class="p">)</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>I sympathize, name might not be perfect and it would be nice if Swift would allow nested types, however it is descriptive. And that’s our view model! You create it with some article object which is then being processed to fit the view. We would make view model out of a dictionary in same fashion. Populating the view (controller) is straightforward.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="k">let</span> <span class="nv">article</span><span class="p">:</span> <span class="kt">Article</span> <span class="o">=</span> <span class="cm">/* some article */</span>
+<span class="k">let</span> <span class="nv">viewModel</span> <span class="o">=</span> <span class="kt">ArticleViewViewModelFromArticle</span><span class="p">(</span><span class="n">article</span><span class="p">)</span>
+<span class="k">let</span> <span class="nv">viewController</span> <span class="o">=</span> <span class="kt">ArticleViewController</span><span class="p">()</span>
+<span class="n">viewController</span><span class="o">.</span><span class="n">viewModel</span> <span class="o">=</span> <span class="n">viewModel</span>
+</code></pre>
+</div>
+
+<p>I hope it’s clear what we did here. The controller doesn’t know anything about the model any more, all it accepts is some type that conforms to its view model protocol. All model processing is done in view model and view controller supports any number of view model object as long as they conform to its view model protocol.</p>
+
+<p>The solution we’ve implemented will work only in certain scenarios. Why? You’ve probably noticed a lot of <code>let</code>-s in our view model which means that properties are constants, not variables, so they’re immutable. If we were to make any of them mutable it would not help. Let’s clarify that by adding thumbnail to our article view. Thumbnail is an image so we need an image view to display it. Image view wants an image on its input, but our model has a URL to the thumbnail, so how do we proceed? We do not care. We need the image and that’s exactly how we’ll model our view model. Let’s extend the view model protocol so it can provide thumbnail and the view controller so it can display that thumbnail.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">protocol</span> <span class="kt">ArticleViewViewModel</span> <span class="p">{</span>
+  <span class="k">var</span> <span class="nv">title</span><span class="p">:</span> <span class="kt">String</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span>
+  <span class="k">var</span> <span class="nv">body</span><span class="p">:</span> <span class="kt">String</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span>
+  <span class="k">var</span> <span class="nv">date</span><span class="p">:</span> <span class="kt">String</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span>
+  <span class="k">var</span> <span class="nv">thumbnail</span><span class="p">:</span> <span class="kt">UIImage</span><span class="p">?</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">ArticleViewController</span><span class="p">:</span> <span class="kt">UIViewController</span> <span class="p">{</span>
+  <span class="k">var</span> <span class="nv">bodyTextView</span><span class="p">:</span> <span class="kt">UITextView</span>
+  <span class="k">var</span> <span class="nv">titleLabel</span><span class="p">:</span> <span class="kt">UILabel</span>
+  <span class="k">var</span> <span class="nv">dateLabel</span><span class="p">:</span> <span class="kt">UILabel</span>
+  <span class="k">var</span> <span class="nv">thumbnailImageView</span><span class="p">:</span> <span class="kt">UIImageView</span>
+
+  <span class="k">var</span> <span class="nv">viewModel</span><span class="p">:</span> <span class="kt">ArticleViewViewModel</span> <span class="p">{</span>
+    <span class="k">didSet</span> <span class="p">{</span>
+      <span class="n">titleLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">viewModel</span><span class="o">.</span><span class="n">title</span>
+      <span class="n">bodyTextView</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">viewModel</span><span class="o">.</span><span class="n">body</span>
+      <span class="n">dateLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="n">viewModel</span><span class="o">.</span><span class="n">date</span>
+      <span class="n">thumbnailImageView</span><span class="o">.</span><span class="n">image</span> <span class="o">=</span> <span class="n">viewModel</span><span class="o">.</span><span class="n">thumbnail</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>That was simple. Notice that we’ve declared image as an Optional type. Reason will become apparent in a bit. (You would also do that if you expect some articles not to have the thumbnail, but that’s not our case.)</p>
+
+<p>Who provides the thumbnail? Right, a concrete view model. Let’s extend our view model so it downloads the thumbnail from the URL provided by Article model.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">ArticleViewViewModelFromArticle</span> <span class="p">{</span>
+  <span class="k">let</span> <span class="nv">article</span><span class="p">:</span> <span class="kt">Article</span>
+  <span class="k">let</span> <span class="nv">title</span><span class="p">:</span> <span class="kt">String</span>
+  <span class="k">let</span> <span class="nv">body</span><span class="p">:</span> <span class="kt">String</span>
+  <span class="k">let</span> <span class="nv">date</span><span class="p">:</span> <span class="kt">String</span>
+  <span class="k">var</span> <span class="nv">thumbnail</span><span class="p">:</span> <span class="kt">UIImage</span><span class="p">?</span>
+  
+  <span class="nf">init</span><span class="p">(</span><span class="n">_</span> <span class="nv">article</span><span class="p">:</span> <span class="kt">Article</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">article</span> <span class="o">=</span> <span class="n">article</span>
+    
+    <span class="k">self</span><span class="o">.</span><span class="n">title</span> <span class="o">=</span> <span class="n">article</span><span class="o">.</span><span class="n">title</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="n">article</span><span class="o">.</span><span class="n">body</span>
+    
+    <span class="k">let</span> <span class="nv">dateFormatter</span> <span class="o">=</span> <span class="kt">NSDateFormatter</span><span class="p">()</span>
+    <span class="n">dateFormatter</span><span class="o">.</span><span class="n">dateStyle</span> <span class="o">=</span> <span class="kt">NSDateFormatterStyle</span><span class="o">.</span><span class="kt">ShortStyle</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">date</span> <span class="o">=</span> <span class="n">dateFormatter</span><span class="o">.</span><span class="nf">stringFromDate</span><span class="p">(</span><span class="n">article</span><span class="o">.</span><span class="n">date</span><span class="p">)</span>
+    
+    <span class="k">let</span> <span class="nv">downloadTask</span> <span class="o">=</span> <span class="kt">NSURLSession</span><span class="o">.</span><span class="nf">sharedSession</span><span class="p">()</span><span class="o">.</span><span class="nf">downloadTaskWithURL</span><span class="p">(</span><span class="n">article</span><span class="o">.</span><span class="n">thumbnail</span><span class="p">)</span> <span class="p">{</span>
+      <span class="p">[</span><span class="k">weak</span> <span class="k">self</span><span class="p">]</span> <span class="n">location</span><span class="p">,</span> <span class="n">response</span><span class="p">,</span> <span class="n">error</span> <span class="k">in</span>
+      <span class="k">if</span> <span class="k">let</span> <span class="nv">data</span> <span class="o">=</span> <span class="kt">NSData</span><span class="p">(</span><span class="nv">contentsOfURL</span><span class="p">:</span> <span class="n">location</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="k">let</span> <span class="nv">image</span> <span class="o">=</span> <span class="kt">UIImage</span><span class="p">(</span><span class="nv">data</span><span class="p">:</span> <span class="n">data</span><span class="p">)</span> <span class="p">{</span>
+          <span class="k">self</span><span class="p">?</span><span class="o">.</span><span class="n">thumbnail</span> <span class="o">=</span> <span class="n">image</span>
+        <span class="p">}</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="n">downloadTask</span><span class="o">.</span><span class="nf">resume</span><span class="p">()</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>Super! Does it work? No. Downloading of a thumbnail is done asynchronously and it takes time. By the time thumbnail is downloaded our view controller has already assigned all values from the view model to its views (image view, text view and labels) so changing image property of view model some time later does not change image in image view. We need a way to propagate that change.</p>
+
+<p>We could post a notification using NSNotificationCenter and have our view controller observe it, but that is not scalable, makes code difficult to read or follow and requires extra care when registering and unregistering the observer. Another way to inform the controller would be to define a delegate protocol for the view model and have the controller conform to it. That’s a bit safer, but it introduces unnecessary dependency and it is even less scalable than notifications - imagine the pain of defining a notify method for each of the view model properties and then implementing those in view controller. Of course, we will not use any of those approaches. What we need is some kind of binding mechanism on property level. We need a way to somehow attach ourselves on a property and get notified each time its value changes.</p>
+
+<p>Mechanisms that do that are called <em>bindings</em> and there is a couple of ways to make them. You could use <a href="https://developer.apple.com/library/ios/documentation/Swift/Conceptual/BuildingCocoaApps/AdoptingCocoaDesignPatterns.html#//apple_ref/doc/uid/TP40014216-CH7-XID_8">Key-Value Observing</a> mechanism but it’s not really native to Swift, there is a lot of boilerplate code with it and it can be hard to debug. View model classes would have to inherit NSObject and it would require a lot of vigilance to properly register observers and unregister them when they’re not needed any more.</p>
+
+<p>Another solution would be to use <a href="https://github.com/ReactiveCocoa/ReactiveCocoa">ReactiveCocoa</a>. It’s a framework inspired by functional reactive programming paradigm and bindings are in heart of it. But it’s the framework built with Objective-C in mind (although it can <a href="http://napora.org/a-swift-reaction/">work with Swift</a>) and unless you’ll be also using it for some other things, introducing a whole paradigm into your code might be to much.</p>
+
+<p>To allow view model immutability we’ll try something more ‘Swiftly’. With the power of generics and closures we’ll make our simple binding mechanism. In the <a href="http://rasic.info/bindings-generics-swift-and-mvvm/">next post</a>.</p>
+
+</div>
+
+<!-- Share links section -->
+<!-- Go to www.addthis.com/dashboard to customize your tools -->
+<script type="text/javascript" src="//s7.addthis.com/js/300/addthis_widget.js#pubid=ra-5741886ff6c25748"></script>
+
+
+<!-- Disqus comments -->
+
+    <section class="disqus">
+    <div id="disqus_thread"></div>
+    <script type="text/javascript">
+
+        var disqus_shortname = 'rasicinfo'; 
+        var disqus_developer = 0; // developer mode is on
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</section>
+
+
+<div class="related">
+  <h2>Related Posts</h2>
+  <ul class="related-posts">
+    
+      <li>
+        <h3>
+          <a href="/a-different-take-on-mvvm-with-swift/">
+            A Different Take on MVVM with Swift
+            <small>31 May 2016</small>
+          </a>
+        </h3>
+      </li>
+    
+      <li>
+        <h3>
+          <a href="/implementing-reactive-delegates-in-swift-powered-by-objective-c/">
+            Implementing Reactive Delegates in Swift Powered by Objective-C
+            <small>28 May 2016</small>
+          </a>
+        </h3>
+      </li>
+    
+      <li>
+        <h3>
+          <a href="/solving-the-ios-binding-problem-with-swift/">
+            Solving the iOS Binding Problem with Swift
+            <small>19 Feb 2015</small>
+          </a>
+        </h3>
+      </li>
+    
+  </ul>
+</div>
+
+      </div>
+    </div>
+
+    <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+
+    <script>
+      (function(document) {
+        var toggle = document.querySelector('.sidebar-toggle');
+        var sidebar = document.querySelector('#sidebar');
+        var checkbox = document.querySelector('#sidebar-checkbox');
+
+        document.addEventListener('click', function(e) {
+          var target = e.target;
+
+          if(!checkbox.checked ||
+             sidebar.contains(target) ||
+             (target === checkbox || target === toggle)) return;
+
+          checkbox.checked = false;
+        }, false);
+      })(document);
+    </script>
+
+    <!-- Google Analytics Tracking code -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-48112103-2', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>

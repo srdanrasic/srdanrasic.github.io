@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+  <head>
+  <link href="http://gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <!-- Enable responsiveness on mobile devices-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+  <title>
+    
+      Bindings, Generics, Swift and MVVM &middot; Srdan Rasic
+    
+  </title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/public/css/poole.css">
+  <link rel="stylesheet" href="/public/css/syntax.css">
+  <link rel="stylesheet" href="/public/css/lanyon.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=PT+Serif:400,400italic,700%7CPT+Sans:400">
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/public/apple-touch-icon-precomposed.png">
+  <link rel="shortcut icon" href="/public/favicon.ico">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/atom.xml">
+</head>
+
+
+  <body class="theme-base-08 layout-reverse">
+
+    <!-- Target for toggling the sidebar `.sidebar-checkbox` is for regular
+     styles, `#sidebar-checkbox` for behavior. -->
+<input type="checkbox" class="sidebar-checkbox" id="sidebar-checkbox">
+
+<!-- Toggleable sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-item">
+    <p></p>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a class="sidebar-nav-item" href="/">Blog</a>
+
+    
+
+    
+    
+      
+        
+      
+    
+      
+        
+      
+    
+      
+        
+          <a class="sidebar-nav-item" href="/about.html">About</a>
+        
+      
+    
+      
+    
+      
+    
+      
+    
+
+    <a class="sidebar-nav-item" href="https://www.github.com/srdanrasic">GitHub</a>
+    <a class="sidebar-nav-item" href="https://www.twitter.com/srdanrasic">Twitter</a>
+  </nav>
+
+  <div class="sidebar-item">
+    <p>
+      &copy; 2016. All rights reserved.
+    </p>
+  </div>
+</div>
+
+
+    <!-- Wrap is the content to shift when toggling the sidebar. We wrap the
+         content to avoid any CSS collisions with our real content. -->
+    <div class="wrap">
+      <div class="masthead">
+        <div class="container">
+          <h3 class="masthead-title">
+            <a href="/" title="Home">Srdan Rasic</a>
+            <small>A software engineer</small>
+          </h3>
+        </div>
+      </div>
+
+      <div class="container content">
+        <div class="post">
+  <h1 class="post-title">Bindings, Generics, Swift and MVVM</h1>
+  <span class="post-date">10 Dec 2014</span>
+  <p>In previous post I’ve introduced MVVM design pattern as an improvement to MVC, but I’ve ended with the solution that covers only certain scenarios - immutable models and view models. To cover rest of them we need mutable view models that can propagate changes to views or view controllers they populate.</p>
+
+<p>In this post I’ll present simple binding mechanism by implementing observer pattern using Swift generics and closures.</p>
+
+<p>Objects of basic data types and values of primitive types do not provide us a way to observe their changes. In order to do that we would have to gain control of their setters (or of that which sets them) and in there notify those who are interested. Fortunately, Swift is smart enough not to allow that. Having that level of freedom would quickly go wrong. However it is possible to create our own data types and tailor them by our desires. We could make them encapsulate basic data or primitive type. That would make modifying value of encapsulated type go through our type’s interface and that’s where we can do what pleases us. Let’s try doing that with, say, basic String type. We’ll call new type DynamicString.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">DynamicString</span> <span class="p">{</span>
+  <span class="k">var</span> <span class="nv">value</span><span class="p">:</span> <span class="kt">String</span>
+ 
+  <span class="nf">init</span><span class="p">(</span><span class="n">_</span> <span class="nv">v</span><span class="p">:</span> <span class="kt">String</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="n">v</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>This is called wrapping or <a href="http://en.wikipedia.org/wiki/Object_type_(object-oriented_programming)#Boxing">boxing</a> of an object. It doesn’t do much but it put us in control of encapsulated object. We can take that control with Swift feature introduced in previous post - property observers. It allows us to intercept change of property’s value, like this.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">DynamicString</span> <span class="p">{</span>
+  <span class="k">var</span> <span class="nv">value</span><span class="p">:</span> <span class="kt">String</span> <span class="p">{</span>
+    <span class="k">didSet</span> <span class="p">{</span>
+      <span class="nf">println</span><span class="p">(</span><span class="s">"did set value to </span><span class="se">\(</span><span class="n">value</span><span class="se">)</span><span class="s">"</span><span class="p">)</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+  
+  <span class="nf">init</span><span class="p">(</span><span class="n">_</span> <span class="nv">v</span><span class="p">:</span> <span class="kt">String</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="n">v</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>We attached some code to <code>didSet</code> property observer of <code>value</code>. Here is an example of what does it do.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="k">let</span> <span class="nv">name</span> <span class="o">=</span> <span class="kt">DynamicString</span><span class="p">(</span><span class="s">"Steve"</span><span class="p">)</span>   <span class="c1">// does not print anything</span>
+<span class="nf">println</span><span class="p">(</span><span class="n">name</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>  <span class="c1">// prints: Steve</span>
+<span class="n">name</span><span class="o">.</span><span class="n">value</span> <span class="o">=</span> <span class="s">"Tim"</span>   <span class="c1">// prints: did set value to Tim</span>
+<span class="nf">println</span><span class="p">(</span><span class="n">name</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>  <span class="c1">// prints: Tim</span>
+</code></pre>
+</div>
+
+<p>As you can see, assigning new value to <code>value</code> property triggers property observer which prints that value. And this is our knight in shining armour. Instead of printing new value, we will use property observer to inform interested parties, let’s call them <em>listeners</em>, that change occurred. What is a listener? In our MVVM example from previous post that is a view controller. It’s interested in changes in ViewModel so that it can update its views accordingly. But do we want to reference the view controller from each string object we create? I hope not. Maybe we could create a Listener protocol and have our listeners adopt it? Not gonna work - listeners will probably want to observe many other objects (properties). We need another knight - and Swift has it - it’s called closure (block in Objective-C or lambda in some other languages). We can define listener to be a closure that accepts one argument of type String.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">DynamicString</span> <span class="p">{</span>
+  <span class="kd">typealias</span> <span class="kt">Listener</span> <span class="o">=</span> <span class="kt">String</span> <span class="o">-&gt;</span> <span class="kt">Void</span>
+  <span class="k">var</span> <span class="nv">listener</span><span class="p">:</span> <span class="kt">Listener</span><span class="p">?</span>
+
+  <span class="kd">func</span> <span class="nf">bind</span><span class="p">(</span><span class="nv">listener</span><span class="p">:</span> <span class="kt">Listener</span><span class="p">?)</span> <span class="p">{</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">listener</span> <span class="o">=</span> <span class="n">listener</span>
+  <span class="p">}</span>
+
+  <span class="k">var</span> <span class="nv">value</span><span class="p">:</span> <span class="kt">String</span> <span class="p">{</span>
+    <span class="k">didSet</span> <span class="p">{</span>
+      <span class="nf">listener</span><span class="p">?(</span><span class="n">value</span><span class="p">)</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+  
+  <span class="nf">init</span><span class="p">(</span><span class="n">_</span> <span class="nv">v</span><span class="p">:</span> <span class="kt">String</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="n">v</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>We’ve used <code>typealias</code> command to introduce new type, <code>Listener</code>, which is a closure that accepts one String argument and returns nothing. With that type we declared a <code>listener</code> property, making it an Optional so it’s not required to be set (our DynamicString object does not have to have a listener). Next, we’ve created a setter for listener property just to make syntax a bit nicer. Finally, we’ve changed property observer to call that listener closure if it is set. That’s it! Let’s go through the example.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="k">let</span> <span class="nv">name</span> <span class="o">=</span> <span class="kt">DynamicString</span><span class="p">(</span><span class="s">"Steve"</span><span class="p">)</span>
+
+<span class="n">name</span><span class="o">.</span><span class="nf">bind</span><span class="p">({</span>
+  <span class="n">value</span> <span class="k">in</span>
+  <span class="nf">println</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<span class="p">})</span>
+
+<span class="n">name</span><span class="o">.</span><span class="n">value</span> <span class="o">=</span> <span class="s">"Tim"</span>  <span class="c1">// prints: Tim</span>
+<span class="n">name</span><span class="o">.</span><span class="n">value</span> <span class="o">=</span> <span class="s">"Groot"</span> <span class="c1">// prints: Groot</span>
+</code></pre>
+</div>
+
+<p>So, each time we set a new value to our dynamic string, listener is triggered and prints out that value. Notice that our binding syntax doesn’t look very nice. Fortunately, Swift is full of syntactic sugars and two of them will help us here. First one says that if last argument of a function is a closure, the closure expression can be defined after parentheses of the function call it supports. Closure like that are called <a href="https://developer.apple.com/library/ios/documentation/Swift/Conceptual/Swift_Programming_Language/Closures.html#//apple_ref/doc/uid/TP40014097-CH11-XID_160">trailing closure</a>. Additionally if function has only one argument, parentheses can be omitted altogether. Second syntactic sugar is that “Swift automatically provides <a href="https://developer.apple.com/library/ios/documentation/Swift/Conceptual/Swift_Programming_Language/Closures.html">shorthand argument names</a> to inline closures, which can be used to refer to the values of the closure’s arguments by the names $0, $1, $2, and so on.” If we exploit that knowledge we get this:</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="n">name</span><span class="o">.</span><span class="n">bind</span> <span class="p">{</span>
+  <span class="nf">println</span><span class="p">(</span><span class="nv">$0</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>That’s much nicer! We can implement listener closure however we want. Instead of printing new value, we could make it update the label text.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="k">let</span> <span class="nv">name</span> <span class="o">=</span> <span class="kt">DynamicString</span><span class="p">(</span><span class="s">"Steve"</span><span class="p">)</span>
+<span class="k">let</span> <span class="nv">nameLabel</span> <span class="o">=</span> <span class="kt">UILabel</span><span class="p">()</span>
+
+<span class="n">name</span><span class="o">.</span><span class="n">bind</span> <span class="p">{</span>
+  <span class="n">nameLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="nv">$0</span>
+<span class="p">}</span>
+
+<span class="nf">println</span><span class="p">(</span><span class="n">nameLabel</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>  <span class="c1">// prints: nil</span>
+
+<span class="n">name</span><span class="o">.</span><span class="n">value</span> <span class="o">=</span> <span class="s">"Tim"</span>
+<span class="nf">println</span><span class="p">(</span><span class="n">nameLabel</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>  <span class="c1">// prints: Tim</span>
+
+<span class="n">name</span><span class="o">.</span><span class="n">value</span> <span class="o">=</span> <span class="s">"Groot"</span>
+<span class="nf">println</span><span class="p">(</span><span class="n">nameLabel</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>  <span class="c1">// prints: Groot</span>
+</code></pre>
+</div>
+
+<p>As you can see, label text is updated whenever the value of our string is changed, but what about first time? Where is Steve? We should not forget him. If you think about it for a bit you’ll notice that <code>bind</code> method only sets the listener, it does not trigger it. We can implement another method that does both things. Let’s call it bindAndFire.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">DynamicString</span> <span class="p">{</span>
+  <span class="o">...</span>
+  <span class="kd">func</span> <span class="nf">bindAndFire</span><span class="p">(</span><span class="nv">listener</span><span class="p">:</span> <span class="kt">Listener</span><span class="p">?)</span> <span class="p">{</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">listener</span> <span class="o">=</span> <span class="n">listener</span>
+    <span class="nf">listener</span><span class="p">?(</span><span class="n">value</span><span class="p">)</span>
+  <span class="p">}</span>
+  <span class="o">...</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>If we modify our example to use this method instead, we’ll get Steve back. In a way.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="o">...</span>
+<span class="n">name</span><span class="o">.</span><span class="n">bindAndFire</span> <span class="p">{</span>
+  <span class="n">nameLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="nv">$0</span>
+<span class="p">}</span>
+
+<span class="nf">println</span><span class="p">(</span><span class="n">nameLabel</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>  <span class="c1">// prints: Steve</span>
+<span class="o">...</span>
+</code></pre>
+</div>
+
+<p>Great, we’ve come a long way. We’ve introduced a new string type that allows us to attach a listener to itself which observes value changes and we’ve shown how it can be used to perform certain actions like label text updating. But String is not the only type we work with so let’s continue by expanding this idea with new types. We could create similar class for Integer… Hmm, and then for Float, Double and Boolean? What about NSDate, UIView or dispatch_queue_t? That seems like a lot of pain. It is, and we would be crazy to take that approach. Instead, we will use one of the most powerful features of Swift - <a href="https://developer.apple.com/library/ios/documentation/Swift/Conceptual/Swift_Programming_Language/Generics.html">generics</a>. It enables us “to write flexible, reusable functions and types that can work with any type.” If your are not familiar with generics, follow that link to learn more about them. When you’re done, we’ll rewrite our DynamicString type to generic type type we’ll call Dynamic. It goes like this:</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="kt">T</span><span class="o">&gt;</span> <span class="p">{</span>
+  <span class="kd">typealias</span> <span class="kt">Listener</span> <span class="o">=</span> <span class="kt">T</span> <span class="o">-&gt;</span> <span class="kt">Void</span>
+  <span class="k">var</span> <span class="nv">listener</span><span class="p">:</span> <span class="kt">Listener</span><span class="p">?</span>
+  
+  <span class="kd">func</span> <span class="nf">bind</span><span class="p">(</span><span class="nv">listener</span><span class="p">:</span> <span class="kt">Listener</span><span class="p">?)</span> <span class="p">{</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">listener</span> <span class="o">=</span> <span class="n">listener</span>
+  <span class="p">}</span>
+  
+  <span class="kd">func</span> <span class="nf">bindAndFire</span><span class="p">(</span><span class="nv">listener</span><span class="p">:</span> <span class="kt">Listener</span><span class="p">?)</span> <span class="p">{</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">listener</span> <span class="o">=</span> <span class="n">listener</span>
+    <span class="nf">listener</span><span class="p">?(</span><span class="n">value</span><span class="p">)</span>
+  <span class="p">}</span>
+
+  <span class="k">var</span> <span class="nv">value</span><span class="p">:</span> <span class="kt">T</span> <span class="p">{</span>
+    <span class="k">didSet</span> <span class="p">{</span>
+      <span class="nf">listener</span><span class="p">?(</span><span class="n">value</span><span class="p">)</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+  
+  <span class="nf">init</span><span class="p">(</span><span class="n">_</span> <span class="nv">v</span><span class="p">:</span> <span class="kt">T</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="n">v</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>We’ve renamed our DynamicString class to Dynamic, marked it as a generic class by appending <code>&lt;T&gt;</code> to its name and replaced all occurrences of <code>String</code> with <code>T</code>. Our Dynamic type can now wrap any other type and expand it with listener mechanism. Here are some examples.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="k">let</span> <span class="nv">name</span> <span class="o">=</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="kt">String</span><span class="o">&gt;</span><span class="p">(</span><span class="s">"Steve"</span><span class="p">)</span>
+<span class="k">let</span> <span class="nv">alive</span> <span class="o">=</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="kt">Bool</span><span class="o">&gt;</span><span class="p">(</span><span class="kc">false</span><span class="p">)</span>
+<span class="k">let</span> <span class="nv">products</span> <span class="o">=</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="p">[</span><span class="kt">String</span><span class="p">]</span><span class="o">&gt;</span><span class="p">([</span><span class="s">"Macintosh"</span><span class="p">,</span> <span class="s">"iPod"</span><span class="p">,</span> <span class="s">"iPhone"</span><span class="p">])</span>
+</code></pre>
+</div>
+
+<p>Isn’t that impressive. It can get even better. Swift compiler is so powerful it can infer type from function’s (in this case constructor’s) arguments so it’s enough to write just this:</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="k">let</span> <span class="nv">name</span> <span class="o">=</span> <span class="kt">Dynamic</span><span class="p">(</span><span class="s">"Steve"</span><span class="p">)</span>
+<span class="k">let</span> <span class="nv">alive</span> <span class="o">=</span> <span class="kt">Dynamic</span><span class="p">(</span><span class="kc">false</span><span class="p">)</span>
+<span class="k">let</span> <span class="nv">products</span> <span class="o">=</span> <span class="kt">Dynamic</span><span class="p">([</span><span class="s">"Macintosh"</span><span class="p">,</span> <span class="s">"iPod"</span><span class="p">,</span> <span class="s">"iPhone"</span><span class="p">])</span>
+</code></pre>
+</div>
+
+<p>Bindings work the same way. Type of the argument in listener closure would be the one specified in generic list (or inferred by compiler when list is omitted). For example:</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="n">products</span><span class="o">.</span><span class="n">bindAndFire</span> <span class="p">{</span>
+  <span class="nf">println</span><span class="p">(</span><span class="s">"First product is </span><span class="se">\(</span><span class="nv">$0</span><span class="o">.</span><span class="n">first</span><span class="se">)</span><span class="s">"</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>That’s our binding mechanism. It’s simple, yet powerful. It can work with any type, you can bind any logic you need and you don’t have to go the through pain of registering and unregistering observers (listeners). You just bind a closure. There is one limitation though - you can have only one listener. That should be enough for most of the cases and for our MVVM example, but should you need support for more than one listener try improving this idea by having an array of listeners - it is possible but it might introduce some other implications.</p>
+
+<p>To conclude, let’s fix MVVM example from previous post so that thumbnail can be propagated to image view. We can start by redefining view model protocol so it requires properties to be bindable, i.e. Dynamic. We can do that for all of them, just to show how it’s done.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">protocol</span> <span class="kt">ArticleViewViewModel</span> <span class="p">{</span>
+  <span class="k">var</span> <span class="nv">title</span><span class="p">:</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="kt">String</span><span class="o">&gt;</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span>
+  <span class="k">var</span> <span class="nv">body</span><span class="p">:</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="kt">String</span><span class="o">&gt;</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span>
+  <span class="k">var</span> <span class="nv">date</span><span class="p">:</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="kt">String</span><span class="o">&gt;</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span>
+  <span class="k">var</span> <span class="nv">thumbnail</span><span class="p">:</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="kt">UIImage</span><span class="p">?</span><span class="o">&gt;</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>Be mindful about the optional there. Wrapped type is the one that is optional, not Dynamic wrapper! Next, we continue by refactoring view model.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">ArticleViewViewModelFromArticle</span><span class="p">:</span> <span class="kt">ArticleViewViewModel</span> <span class="p">{</span>
+  <span class="k">let</span> <span class="nv">article</span><span class="p">:</span> <span class="kt">Article</span>
+  <span class="k">let</span> <span class="nv">title</span><span class="p">:</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="kt">String</span><span class="o">&gt;</span>
+  <span class="k">let</span> <span class="nv">body</span><span class="p">:</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="kt">String</span><span class="o">&gt;</span>
+  <span class="k">let</span> <span class="nv">date</span><span class="p">:</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="kt">String</span><span class="o">&gt;</span>
+  <span class="k">let</span> <span class="nv">thumbnail</span><span class="p">:</span> <span class="kt">Dynamic</span><span class="o">&lt;</span><span class="kt">UIImage</span><span class="p">?</span><span class="o">&gt;</span>
+  
+  <span class="nf">init</span><span class="p">(</span><span class="n">_</span> <span class="nv">article</span><span class="p">:</span> <span class="kt">Article</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">article</span> <span class="o">=</span> <span class="n">article</span>
+    
+    <span class="k">self</span><span class="o">.</span><span class="n">title</span> <span class="o">=</span> <span class="kt">Dynamic</span><span class="p">(</span><span class="n">article</span><span class="o">.</span><span class="n">title</span><span class="p">)</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="kt">Dynamic</span><span class="p">(</span><span class="n">article</span><span class="o">.</span><span class="n">body</span><span class="p">)</span>
+    
+    <span class="k">let</span> <span class="nv">dateFormatter</span> <span class="o">=</span> <span class="kt">NSDateFormatter</span><span class="p">()</span>
+    <span class="n">dateFormatter</span><span class="o">.</span><span class="n">dateStyle</span> <span class="o">=</span> <span class="kt">NSDateFormatterStyle</span><span class="o">.</span><span class="kt">ShortStyle</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">date</span> <span class="o">=</span> <span class="kt">Dynamic</span><span class="p">(</span><span class="n">dateFormatter</span><span class="o">.</span><span class="nf">stringFromDate</span><span class="p">(</span><span class="n">article</span><span class="o">.</span><span class="n">date</span><span class="p">))</span>
+    
+    <span class="k">self</span><span class="o">.</span><span class="n">thumbnail</span> <span class="o">=</span> <span class="kt">Dynamic</span><span class="p">(</span><span class="kc">nil</span><span class="p">)</span>
+    
+    <span class="k">let</span> <span class="nv">downloadTask</span> <span class="o">=</span> <span class="kt">NSURLSession</span><span class="o">.</span><span class="nf">sharedSession</span><span class="p">()</span>
+                                   <span class="o">.</span><span class="nf">downloadTaskWithURL</span><span class="p">(</span><span class="n">article</span><span class="o">.</span><span class="n">thumbnail</span><span class="p">)</span> <span class="p">{</span>
+      <span class="p">[</span><span class="k">weak</span> <span class="k">self</span><span class="p">]</span> <span class="n">location</span><span class="p">,</span> <span class="n">response</span><span class="p">,</span> <span class="n">error</span> <span class="k">in</span>
+      <span class="k">if</span> <span class="k">let</span> <span class="nv">data</span> <span class="o">=</span> <span class="kt">NSData</span><span class="p">(</span><span class="nv">contentsOfURL</span><span class="p">:</span> <span class="n">location</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="k">let</span> <span class="nv">image</span> <span class="o">=</span> <span class="kt">UIImage</span><span class="p">(</span><span class="nv">data</span><span class="p">:</span> <span class="n">data</span><span class="p">)</span> <span class="p">{</span>
+          <span class="k">self</span><span class="p">?</span><span class="o">.</span><span class="n">thumbnail</span><span class="o">.</span><span class="n">value</span> <span class="o">=</span> <span class="n">image</span>
+        <span class="p">}</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+    
+    <span class="n">downloadTask</span><span class="o">.</span><span class="nf">resume</span><span class="p">()</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>This should be straightforward, however please note few things. All properties are still constants (defined with <code>let</code>). That is important because we must not change them after we set them for the first time. Listeners get notified when the value of Dynamic changes, but not when Dynamic itself changes! That means that we have to initialize all of them in the constructor (initializer). Here is a golden rule: Dynamics that cannot be initialized with concrete value in the constructor must encapsulate optional type, like as <code>thumbnail</code> encapsulates optional <code>UIImage</code>. In cases like those, we initialize Dynamic with <code>nil</code> and update it later when concrete or new value becomes available - like when thumbnail is downloaded.</p>
+
+<p>What’s left is to bind all those properties in the view controller.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">ArticleViewController</span> <span class="p">{</span>
+  <span class="k">var</span> <span class="nv">bodyTextView</span><span class="p">:</span> <span class="kt">UITextView</span>
+  <span class="k">var</span> <span class="nv">titleLabel</span><span class="p">:</span> <span class="kt">UILabel</span>
+  <span class="k">var</span> <span class="nv">dateLabel</span><span class="p">:</span> <span class="kt">UILabel</span>
+  <span class="k">var</span> <span class="nv">thumbnailImageView</span><span class="p">:</span> <span class="kt">UIImageView</span>
+  
+  <span class="k">var</span> <span class="nv">viewModel</span><span class="p">:</span> <span class="kt">ArticleViewViewModel</span> <span class="p">{</span>
+    <span class="k">didSet</span> <span class="p">{</span>
+      <span class="n">viewModel</span><span class="o">.</span><span class="n">title</span><span class="o">.</span><span class="n">bindAndFire</span> <span class="p">{</span>
+        <span class="p">[</span><span class="k">unowned</span> <span class="k">self</span><span class="p">]</span> <span class="k">in</span>
+        <span class="k">self</span><span class="o">.</span><span class="n">titleLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="nv">$0</span>
+      <span class="p">}</span>
+      
+      <span class="n">viewModel</span><span class="o">.</span><span class="n">body</span><span class="o">.</span><span class="n">bindAndFire</span> <span class="p">{</span>
+        <span class="p">[</span><span class="k">unowned</span> <span class="k">self</span><span class="p">]</span> <span class="k">in</span>
+        <span class="k">self</span><span class="o">.</span><span class="n">bodyTextView</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="nv">$0</span>
+      <span class="p">}</span>
+      
+      <span class="n">viewModel</span><span class="o">.</span><span class="n">date</span><span class="o">.</span><span class="n">bindAndFire</span> <span class="p">{</span>
+        <span class="p">[</span><span class="k">unowned</span> <span class="k">self</span><span class="p">]</span> <span class="k">in</span>
+        <span class="k">self</span><span class="o">.</span><span class="n">dateLabel</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="nv">$0</span>
+      <span class="p">}</span>
+      
+      <span class="n">viewModel</span><span class="o">.</span><span class="n">thumbnail</span><span class="o">.</span><span class="n">bindAndFire</span> <span class="p">{</span>
+        <span class="p">[</span><span class="k">unowned</span> <span class="k">self</span><span class="p">]</span> <span class="k">in</span>
+        <span class="k">self</span><span class="o">.</span><span class="n">thumbnailImageView</span><span class="o">.</span><span class="n">image</span> <span class="o">=</span> <span class="nv">$0</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>And that’s it! Our view will reflect any change done to view model. Just be careful not cause retain cycles with closures. Always use <code>unowned</code> or <code>weak</code> <code>self</code> within the closure. We’re ok with unowned here because view controller is owner of view model so view model will not outlive view controller.</p>
+
+</div>
+
+<!-- Share links section -->
+<!-- Go to www.addthis.com/dashboard to customize your tools -->
+<script type="text/javascript" src="//s7.addthis.com/js/300/addthis_widget.js#pubid=ra-5741886ff6c25748"></script>
+
+
+<!-- Disqus comments -->
+
+    <section class="disqus">
+    <div id="disqus_thread"></div>
+    <script type="text/javascript">
+
+        var disqus_shortname = 'rasicinfo'; 
+        var disqus_developer = 0; // developer mode is on
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</section>
+
+
+<div class="related">
+  <h2>Related Posts</h2>
+  <ul class="related-posts">
+    
+      <li>
+        <h3>
+          <a href="/a-different-take-on-mvvm-with-swift/">
+            A Different Take on MVVM with Swift
+            <small>31 May 2016</small>
+          </a>
+        </h3>
+      </li>
+    
+      <li>
+        <h3>
+          <a href="/implementing-reactive-delegates-in-swift-powered-by-objective-c/">
+            Implementing Reactive Delegates in Swift Powered by Objective-C
+            <small>28 May 2016</small>
+          </a>
+        </h3>
+      </li>
+    
+      <li>
+        <h3>
+          <a href="/solving-the-ios-binding-problem-with-swift/">
+            Solving the iOS Binding Problem with Swift
+            <small>19 Feb 2015</small>
+          </a>
+        </h3>
+      </li>
+    
+  </ul>
+</div>
+
+      </div>
+    </div>
+
+    <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+
+    <script>
+      (function(document) {
+        var toggle = document.querySelector('.sidebar-toggle');
+        var sidebar = document.querySelector('#sidebar');
+        var checkbox = document.querySelector('#sidebar-checkbox');
+
+        document.addEventListener('click', function(e) {
+          var target = e.target;
+
+          if(!checkbox.checked ||
+             sidebar.contains(target) ||
+             (target === checkbox || target === toggle)) return;
+
+          checkbox.checked = false;
+        }, false);
+      })(document);
+    </script>
+
+    <!-- Google Analytics Tracking code -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-48112103-2', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>

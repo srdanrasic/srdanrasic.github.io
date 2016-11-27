@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+  <head>
+  <link href="http://gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <!-- Enable responsiveness on mobile devices-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+  <title>
+    
+      A Different Take on MVVM with Swift &middot; Srdan Rasic
+    
+  </title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/public/css/poole.css">
+  <link rel="stylesheet" href="/public/css/syntax.css">
+  <link rel="stylesheet" href="/public/css/lanyon.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=PT+Serif:400,400italic,700%7CPT+Sans:400">
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/public/apple-touch-icon-precomposed.png">
+  <link rel="shortcut icon" href="/public/favicon.ico">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/atom.xml">
+</head>
+
+
+  <body class="theme-base-08 layout-reverse">
+
+    <!-- Target for toggling the sidebar `.sidebar-checkbox` is for regular
+     styles, `#sidebar-checkbox` for behavior. -->
+<input type="checkbox" class="sidebar-checkbox" id="sidebar-checkbox">
+
+<!-- Toggleable sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-item">
+    <p></p>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a class="sidebar-nav-item" href="/">Blog</a>
+
+    
+
+    
+    
+      
+        
+      
+    
+      
+        
+      
+    
+      
+        
+          <a class="sidebar-nav-item" href="/about.html">About</a>
+        
+      
+    
+      
+    
+      
+    
+      
+    
+
+    <a class="sidebar-nav-item" href="https://www.github.com/srdanrasic">GitHub</a>
+    <a class="sidebar-nav-item" href="https://www.twitter.com/srdanrasic">Twitter</a>
+  </nav>
+
+  <div class="sidebar-item">
+    <p>
+      &copy; 2016. All rights reserved.
+    </p>
+  </div>
+</div>
+
+
+    <!-- Wrap is the content to shift when toggling the sidebar. We wrap the
+         content to avoid any CSS collisions with our real content. -->
+    <div class="wrap">
+      <div class="masthead">
+        <div class="container">
+          <h3 class="masthead-title">
+            <a href="/" title="Home">Srdan Rasic</a>
+            <small>A software engineer</small>
+          </h3>
+        </div>
+      </div>
+
+      <div class="container content">
+        <div class="post">
+  <h1 class="post-title">A Different Take on MVVM with Swift</h1>
+  <span class="post-date">31 May 2016</span>
+  <p>Model-View-ViewModel or MVVM is everywhere these days. There isn’t a day I don’t see a blog post or a tweet about it. It’s being praised into havens. But what exactly is MVVM? What is a ViewModel? What are its concerns? Many seem to have different opinions.</p>
+
+<p>I’ve been using MVVM for two years now. I started with it in Objective-C, continued with Swift and now I’m combining it with FRP because they’re nice fit, as if they’re made for each other.</p>
+
+<p>Some of you might have read my previous articles about MVVM. I don’t do it like that any more. Not that there is anything wrong with it, but I’ve found better ways. More than a year has passed. A lot has changed. I’ve even stopped calling it MVVM. Doh.</p>
+
+<p>In next few paragraphs I’ll describe what I found to be the most convenient app architecture for me in 2016. Note that I haven’t invented anything new, this is just my way of doing  MVVM, i.e. a variation of it for which I have an analogy that makes it easier to reason about it. I call it <em>Scene-Stage-Director</em>.</p>
+
+<h2 id="stage">Stage</h2>
+
+<p>The uppermost component of MVVM is the View. It’s what user sees, where the appearance is defined, layout calculated, animations performed, etc. On iOS however we don’t work just with views, we work with view hierarchies managed by the view controllers. So to avoid any confusion, instead of View, I’ll call the uppermost layer Stage. Because it’s where the play unfolds.</p>
+
+<p>Stage is comprised of a view controller and its views. Its concern is displaying the content and UI to the user. It knows nothing about business or application logic. It knows nothing about networking, services or persistence. On the other hand, it knows about layout, appearance and animations.</p>
+
+<p>People tend to say that views should be dumb. That might be the case on some platforms, but I don’t agree it’s true on iOS. On iOS views are dynamic and alive and to provide liveliness they do stuff. They calculate, they transform and they react. They are logical and they are mathematical. They are also declarative and often imperative.</p>
+
+<h2 id="director">Director</h2>
+
+<p>What content does the stage present? How does it react to user feedback? Those aspects are directed by the Director. Hence the name. It’s the component that’s called ViewModel in MVVM. But I don’t like that name. I don’t believe it expresses its concerns well. Model usually refers to some data, scheme or the persistence, often static. It says nothing about application logic.</p>
+
+<p>Director represents application logic of a use case. It interacts with lower-level components from which it gets the content, transforms it and provides it to the stage. It’s the intermediary between application services and the stage. Additionally, it ‘observes’ user actions and inputs through stage and implements logic that reacts to those events. Director is ideal fit for functional reactive paradigm.</p>
+
+<h2 id="scene">Scene</h2>
+
+<p>Questions I had most trouble with are: Who creates the stage (the view controller)? Who creates the director? Who presents the view controller? That’s where the Director-Stage analogy helped me clarify my though process. The missing part I needed was Scene. I like to think of it as a public part of Scene-Stage-Director triad. Scene creates the stage and the director, sets the director to the stage and knows how to present the stage onto a given context.</p>
+
+<p>Scene also presents other scenes. It observes the director outputs for presentations events and presents destination scenes upon them. Scene couples other components, it should have no logic in itself. Scene should be instantiated with the data it needs to show the content (e.g. user ID).</p>
+
+<h2 id="context">Context</h2>
+
+<p>Among many other concerns, view controllers also handle navigation (presentation of other view controllers). That makes it hard to reason about navigation logic in the app. If you add custom transitions to that, things get out of control pretty fast. Easy way to solve this is to abstract presentation interface. For example, navigation controller could be abstracted into</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">protocol</span> <span class="kt">NavigationContext</span> <span class="p">{</span>
+  <span class="kd">func</span> <span class="nf">push</span><span class="p">(</span><span class="nv">stage</span><span class="p">:</span> <span class="kt">UIViewController</span><span class="p">)</span>
+  <span class="kd">func</span> <span class="nf">pop</span><span class="p">()</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>The scene will be given an object conforming to this protocol and it’ll just push its stage to it. How the context pushes the stage is not important. Is it animated, is it custom transition or something completely different is the concern of the concrete implementation of the context.</p>
+
+<h2 id="adhering-to-this-architecture">Adhering to this Architecture</h2>
+
+<p>Here are some rules and examples that should be followed if applying this architecture.</p>
+
+<h3 id="stage-is-usually-just-a-uiviewcontroller-subclass">Stage is usually just a UIViewController subclass</h3>
+
+<p>It could also be a UIView or an OpenGL view but you’ll probably never go down that path.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">Stage</span><span class="p">:</span> <span class="kt">UIViewController</span> <span class="p">{</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h3 id="stage-owns-its-director">Stage owns its Director</h3>
+
+<p>Upper layers should always own lower layers, as they depend on them. Same is in the Stage-Director relationship.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">Stage</span><span class="p">:</span> <span class="kt">UIViewController</span> <span class="p">{</span>
+  <span class="k">let</span> <span class="nv">director</span><span class="p">:</span> <span class="kt">Director</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h3 id="director-is-injected-into-the-stage">Director is injected into the Stage</h3>
+
+<p>If stage would create the director, it would have to know about all the dependencies that the director needs. We don’t want that, so we’ll just inject it. There is one problem however. UIViewController does not load the outlets at the instantiation time, but we need the outlets in order to pass their actions to the director.</p>
+
+<p>The solution is take director factory instead, that given the stage itself, returns the director. Then all that’s needed is to wait for <code class="highlighter-rouge">viewDidLoad</code> and load the director there.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">Stage</span><span class="p">:</span> <span class="kt">UIViewController</span> <span class="p">{</span>
+  <span class="nf">init</span><span class="p">(</span><span class="nv">directorFactory</span><span class="p">:</span> <span class="kt">Stage</span> <span class="o">-&gt;</span> <span class="kt">Director</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>It’s best to create a base class that handles this logic once for all time. Here is one for your convenience.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="kt">BaseStage</span><span class="o">&lt;</span><span class="kt">D</span><span class="o">&gt;</span><span class="p">:</span> <span class="kt">UIViewController</span> <span class="p">{</span>
+
+  <span class="c1">/// Director. Do not access before the view loads!</span>
+  <span class="kd">public</span> <span class="k">var</span> <span class="nv">director</span><span class="p">:</span> <span class="kt">D</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="k">let</span> <span class="nv">director</span> <span class="o">=</span> <span class="n">_director</span> <span class="p">{</span>
+      <span class="k">return</span> <span class="n">director</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+      <span class="nf">fatalError</span><span class="p">(</span><span class="s">"Director must not be accessed before view loads."</span><span class="p">)</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+
+  <span class="kd">private</span> <span class="k">var</span> <span class="nv">_director</span><span class="p">:</span> <span class="kt">D</span><span class="p">?</span>
+  <span class="kd">private</span> <span class="k">var</span> <span class="nv">directorFactory</span><span class="p">:</span> <span class="p">(</span><span class="kt">DirectedViewController</span> <span class="o">-&gt;</span> <span class="kt">D</span><span class="p">)</span><span class="o">!</span>
+
+  <span class="kd">public</span> <span class="k">override</span> <span class="kd">func</span> <span class="nf">viewDidLoad</span><span class="p">()</span> <span class="p">{</span>
+    <span class="k">super</span><span class="o">.</span><span class="nf">viewDidLoad</span><span class="p">()</span>
+    <span class="n">_director</span> <span class="o">=</span> <span class="nf">directorFactory</span><span class="p">(</span><span class="k">self</span><span class="p">)</span>
+    <span class="n">directorFactory</span> <span class="o">=</span> <span class="kc">nil</span>
+    <span class="nf">bindDirector</span><span class="p">(</span><span class="n">director</span><span class="p">)</span>
+  <span class="p">}</span>
+  
+  <span class="c1">/// Wrapper over the constructor that loads view controller from nib file.</span>
+  <span class="kd">public</span> <span class="nf">init</span><span class="p">(</span><span class="n">nibName</span> <span class="nv">nibNameOrNil</span><span class="p">:</span> <span class="kt">String</span><span class="p">?</span> <span class="o">=</span> <span class="kc">nil</span><span class="p">,</span> <span class="n">bundle</span> <span class="nv">nibBundleOrNil</span><span class="p">:</span> <span class="kt">NSBundle</span><span class="p">?</span> <span class="o">=</span> <span class="kc">nil</span><span class="p">,</span> <span class="nv">directorFactory</span><span class="p">:</span> <span class="kt">DirectedViewController</span> <span class="o">-&gt;</span> <span class="kt">D</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">directorFactory</span> <span class="o">=</span> <span class="n">directorFactory</span>
+    <span class="k">super</span><span class="o">.</span><span class="nf">init</span><span class="p">(</span><span class="nv">nibName</span><span class="p">:</span> <span class="n">nibNameOrNil</span><span class="p">,</span> <span class="nv">bundle</span><span class="p">:</span> <span class="n">nibBundleOrNil</span><span class="p">)</span>
+  <span class="p">}</span>
+
+  <span class="c1">/// Convenience class method that loads view controller from a storyboard.</span>
+  <span class="kd">public</span> <span class="kd">static</span> <span class="kd">func</span> <span class="nf">create</span><span class="p">(</span><span class="nv">storyboard</span><span class="p">:</span> <span class="kt">UIStoryboard</span><span class="p">,</span> <span class="nv">directorFactory</span><span class="p">:</span> <span class="kt">DirectedViewController</span> <span class="o">-&gt;</span> <span class="kt">D</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kt">DirectedViewController</span> <span class="p">{</span>
+    <span class="k">let</span> <span class="nv">viewController</span> <span class="o">=</span> <span class="n">storyboard</span><span class="o">.</span><span class="nf">instantiateInitialViewController</span><span class="p">()</span> <span class="k">as!</span> <span class="kt">DirectedViewController</span>
+    <span class="n">viewController</span><span class="o">.</span><span class="n">directorFactory</span> <span class="o">=</span> <span class="n">directorFactory</span>
+    <span class="k">return</span> <span class="n">viewController</span>
+  <span class="p">}</span>
+
+  <span class="c1">/// To be overridden by subclasses.</span>
+  <span class="kd">public</span> <span class="kd">func</span> <span class="nf">bindDirector</span><span class="p">(</span><span class="nv">director</span><span class="p">:</span> <span class="kt">D</span><span class="p">)</span> <span class="p">{}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h3 id="director-is-purely-reactive">Director is purely reactive</h3>
+
+<p>Or at least as pure as it can be. We live in a real word unfortunately. By purely reactive I mean that it takes streams on input and exposes streams on output. Outputs should be derived from inputs using reactive operators.</p>
+
+<p>Director should take input streams in the constructor. It should provide output streams as properties. Output streams should be, preferably compiler-guaranteed, non-failable (<code class="highlighter-rouge">Stream</code> in ReactiveKit, <code class="highlighter-rouge">Driver</code> in RxSwift or <code class="highlighter-rouge">Signal&lt;T, NoError&gt;</code> in ReactiveCocoa).</p>
+
+<p>Purely reactive director probably won’t have any non-private methods. Director will often also take dependencies like services or APIs on input (in the constructor).</p>
+
+<p>Here is an example of user profile stage director. It takes current session as a dependency and a <code class="highlighter-rouge">userWebsiteButtonTap</code> stream from the stage. It provides two outputs to the stage and one to the scene. It transforms inputs to outputs by utilising reactive operators.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">Director</span> <span class="p">{</span>
+
+  <span class="c1">/// Stage Outputs</span>
+  
+  <span class="k">let</span> <span class="nv">userName</span><span class="p">:</span> <span class="kt">Stream</span><span class="o">&lt;</span><span class="kt">String</span><span class="o">&gt;</span>
+  <span class="k">let</span> <span class="nv">userWebsiteName</span><span class="p">:</span> <span class="kt">Stream</span><span class="o">&lt;</span><span class="kt">String</span><span class="o">&gt;</span>
+  
+  <span class="c1">/// Scene Outputs</span>
+  
+  <span class="k">let</span> <span class="nv">urlToOpen</span><span class="p">:</span> <span class="kt">Stream</span><span class="o">&lt;</span><span class="kt">NSURL</span><span class="o">&gt;</span>
+
+  <span class="nf">init</span><span class="p">(</span><span class="nv">session</span><span class="p">:</span> <span class="kt">Session</span><span class="p">,</span> <span class="nv">websiteButtonTap</span><span class="p">:</span> <span class="kt">Stream</span><span class="o">&lt;</span><span class="kt">Void</span><span class="o">&gt;</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">let</span> <span class="nv">user</span> <span class="cm">/*: Stream&lt;User&gt; */</span> <span class="o">=</span> <span class="n">session</span><span class="o">.</span><span class="nf">currentUser</span><span class="p">()</span><span class="o">.</span><span class="nf">shareReply</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">userName</span> <span class="o">=</span> <span class="n">user</span><span class="o">.</span><span class="n">map</span> <span class="p">{</span> <span class="nv">$0</span><span class="o">.</span><span class="n">name</span> <span class="p">}</span> 
+    <span class="n">userWebsiteName</span> <span class="o">=</span> <span class="n">user</span><span class="o">.</span><span class="n">map</span> <span class="p">{</span> <span class="nv">$0</span><span class="o">.</span><span class="n">websiteName</span> <span class="p">}</span> 
+    <span class="n">urlToOpen</span> <span class="o">=</span> <span class="n">websiteButtonTap</span><span class="o">.</span><span class="nf">withLatestFrom</span><span class="p">(</span><span class="n">user</span><span class="p">)</span> <span class="p">{</span> <span class="n">_</span><span class="p">,</span> <span class="n">user</span> <span class="k">in</span> <span class="n">user</span><span class="o">.</span><span class="n">websiteURL</span> <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h3 id="director-outputs-are-observed-by-the-stage">Director outputs are observed by the stage</h3>
+
+<p>The stage should observe director outputs (that are streams) and update respective views accordingly. Binding should be the preferred way of observing.</p>
+
+<p>If using base stage from above, you’d do binding in <code class="highlighter-rouge">bindDirector</code> method override.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code>  <span class="o">...</span>
+  
+  <span class="k">override</span> <span class="kd">func</span> <span class="nf">bindDirector</span><span class="p">(</span><span class="nv">director</span><span class="p">:</span> <span class="kt">Director</span><span class="p">)</span> <span class="p">{</span>
+    <span class="nf">bind</span><span class="p">(</span><span class="n">director</span><span class="o">.</span><span class="n">userName</span><span class="p">,</span> <span class="nv">to</span><span class="p">:</span> <span class="n">nameLabel</span><span class="o">.</span><span class="n">rText</span><span class="p">)</span>
+    <span class="nf">bind</span><span class="p">(</span><span class="n">director</span><span class="o">.</span><span class="n">userWebsiteName</span><span class="p">,</span> <span class="nv">to</span><span class="p">:</span> <span class="n">websiteButton</span><span class="o">.</span><span class="n">rTitle</span><span class="p">)</span>
+  <span class="p">}</span>
+  
+  <span class="o">...</span>
+</code></pre>
+</div>
+
+<h3 id="director-outputs-are-observed-also-by-the-scene">Director outputs are observed also by the scene</h3>
+
+<p>If the scene presents another scene, there should be a stream on the director output that triggers that presentation. The scene should observe that stream and present another scene when the event is received.</p>
+
+<p>Here is an example of the scene method that creates the stage, provides it with the director factory and also observes <code class="highlighter-rouge">urlToOpen</code> and opens Safari when the event is received.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="kt">Scene</span> <span class="p">{</span>
+
+  <span class="o">...</span>
+
+  <span class="kd">func</span> <span class="nf">createStage</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kt">Stage</span> <span class="p">{</span>
+  
+    <span class="c1">// We provide a director factory to the stage </span>
+    <span class="k">return</span> <span class="kt">Stage</span> <span class="p">{</span> <span class="n">stage</span> <span class="k">in</span>
+    
+      <span class="k">let</span> <span class="nv">director</span> <span class="o">=</span> <span class="kt">Director</span><span class="p">(</span>
+        <span class="nv">session</span><span class="p">:</span> <span class="n">session</span><span class="p">,</span> 
+        <span class="nv">websiteButtonTap</span><span class="p">:</span> <span class="n">stage</span><span class="o">.</span><span class="n">websiteButton</span><span class="o">.</span><span class="n">rTap</span>
+      <span class="p">)</span>
+      
+      <span class="n">director</span><span class="o">.</span><span class="n">urlToOpen</span><span class="o">.</span><span class="n">observeNext</span> <span class="p">{</span> <span class="n">url</span> <span class="k">in</span>
+        <span class="kt">UIApplication</span><span class="o">.</span><span class="nf">sharedApplication</span><span class="p">()</span><span class="o">.</span><span class="nf">openURL</span><span class="p">(</span><span class="n">url</span><span class="p">)</span> 
+      <span class="p">}</span><span class="o">.</span><span class="nf">disposeIn</span><span class="p">(</span><span class="n">stage</span><span class="o">.</span><span class="n">rBag</span><span class="p">)</span>
+      
+      <span class="k">return</span> <span class="n">director</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h3 id="scene-knows-to-present-itself">Scene knows to present itself</h3>
+
+<p>Scene should expose an interface that can be used to present the scene. Scene should take a context onto which it should present itself.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="kt">Scene</span> <span class="p">{</span>
+
+  <span class="k">let</span> <span class="nv">context</span><span class="p">:</span> <span class="kt">Context</span>
+
+  <span class="kd">public</span> <span class="nf">init</span><span class="p">(</span><span class="nv">context</span><span class="p">:</span> <span class="kt">Context</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">self</span><span class="o">.</span><span class="n">context</span> <span class="o">=</span> <span class="n">context</span>
+  <span class="p">}</span>
+
+  <span class="kd">public</span> <span class="kd">func</span> <span class="nf">presentInContext</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">context</span><span class="o">.</span><span class="nf">present</span><span class="p">(</span><span class="nf">createStage</span><span class="p">())</span>
+  <span class="p">}</span>
+  
+  <span class="o">...</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h3 id="be-flexible">Be flexible</h3>
+
+<p>Bad architecture is worse than no architecture. There are no scene or director type protocols on purpose. Once you put them into place you have to live by their rules. Leaving it open makes it flexible. If you don’t need a director, if your stage is static and dumb, don’t create one. Being a purist is noble, but the software is not mathematics.</p>
+
+<h2 id="where-to-go-from-here">Where to go from here</h2>
+
+<p>I’ve put up an <a href="https://github.com/ReactiveKit/ReactiveGitter">example app</a> on GitHub that applies this architecture. If this looks promising to you, go and check it out. I’ll welcome your feedback as I’m sure there is a room for improvement.</p>
+
+<p>The example is based on <a href="https://github.com/ReactiveKit/ReactiveKit">ReactiveKit</a> framework I’ve been developing as a successor to Swift Bond, but the architecture presented here is not limited to any specific FRP library. If you’re using RxSwift or ReactiveCocoa you are good to go as those are great libraries I’d recommend at any time.</p>
+
+<p>ReactiveKit is my exercise in FRP and a way to provide something different. As opposed to <code class="highlighter-rouge">Observable</code> of RxSwift or <code class="highlighter-rouge">Signal/SignalProducer</code> of ReactiveCocoa, ReactiveKit provides <code class="highlighter-rouge">Stream</code> type that cannot error out. It’s similar to <code class="highlighter-rouge">Driver</code> from RxCocoa, but not the same. Director output streams should use that type because you never want to bind something that can error out to a view. For streams that can error out, ReactiveKit provides <code class="highlighter-rouge">Operation</code> type.</p>
+
+</div>
+
+<!-- Share links section -->
+<!-- Go to www.addthis.com/dashboard to customize your tools -->
+<script type="text/javascript" src="//s7.addthis.com/js/300/addthis_widget.js#pubid=ra-5741886ff6c25748"></script>
+
+
+<!-- Disqus comments -->
+
+    <section class="disqus">
+    <div id="disqus_thread"></div>
+    <script type="text/javascript">
+
+        var disqus_shortname = 'rasicinfo'; 
+        var disqus_developer = 0; // developer mode is on
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</section>
+
+
+<div class="related">
+  <h2>Related Posts</h2>
+  <ul class="related-posts">
+    
+      <li>
+        <h3>
+          <a href="/implementing-reactive-delegates-in-swift-powered-by-objective-c/">
+            Implementing Reactive Delegates in Swift Powered by Objective-C
+            <small>28 May 2016</small>
+          </a>
+        </h3>
+      </li>
+    
+      <li>
+        <h3>
+          <a href="/solving-the-ios-binding-problem-with-swift/">
+            Solving the iOS Binding Problem with Swift
+            <small>19 Feb 2015</small>
+          </a>
+        </h3>
+      </li>
+    
+      <li>
+        <h3>
+          <a href="/bindings-generics-swift-and-mvvm/">
+            Bindings, Generics, Swift and MVVM
+            <small>10 Dec 2014</small>
+          </a>
+        </h3>
+      </li>
+    
+  </ul>
+</div>
+
+      </div>
+    </div>
+
+    <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+
+    <script>
+      (function(document) {
+        var toggle = document.querySelector('.sidebar-toggle');
+        var sidebar = document.querySelector('#sidebar');
+        var checkbox = document.querySelector('#sidebar-checkbox');
+
+        document.addEventListener('click', function(e) {
+          var target = e.target;
+
+          if(!checkbox.checked ||
+             sidebar.contains(target) ||
+             (target === checkbox || target === toggle)) return;
+
+          checkbox.checked = false;
+        }, false);
+      })(document);
+    </script>
+
+    <!-- Google Analytics Tracking code -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-48112103-2', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>

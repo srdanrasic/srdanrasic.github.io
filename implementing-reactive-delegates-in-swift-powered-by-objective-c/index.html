@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+  <head>
+  <link href="http://gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <!-- Enable responsiveness on mobile devices-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+  <title>
+    
+      Implementing Reactive Delegates in Swift Powered by Objective-C &middot; Srdan Rasic
+    
+  </title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/public/css/poole.css">
+  <link rel="stylesheet" href="/public/css/syntax.css">
+  <link rel="stylesheet" href="/public/css/lanyon.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=PT+Serif:400,400italic,700%7CPT+Sans:400">
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/public/apple-touch-icon-precomposed.png">
+  <link rel="shortcut icon" href="/public/favicon.ico">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/atom.xml">
+</head>
+
+
+  <body class="theme-base-08 layout-reverse">
+
+    <!-- Target for toggling the sidebar `.sidebar-checkbox` is for regular
+     styles, `#sidebar-checkbox` for behavior. -->
+<input type="checkbox" class="sidebar-checkbox" id="sidebar-checkbox">
+
+<!-- Toggleable sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-item">
+    <p></p>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a class="sidebar-nav-item" href="/">Blog</a>
+
+    
+
+    
+    
+      
+        
+      
+    
+      
+        
+      
+    
+      
+        
+          <a class="sidebar-nav-item" href="/about.html">About</a>
+        
+      
+    
+      
+    
+      
+    
+      
+    
+
+    <a class="sidebar-nav-item" href="https://www.github.com/srdanrasic">GitHub</a>
+    <a class="sidebar-nav-item" href="https://www.twitter.com/srdanrasic">Twitter</a>
+  </nav>
+
+  <div class="sidebar-item">
+    <p>
+      &copy; 2016. All rights reserved.
+    </p>
+  </div>
+</div>
+
+
+    <!-- Wrap is the content to shift when toggling the sidebar. We wrap the
+         content to avoid any CSS collisions with our real content. -->
+    <div class="wrap">
+      <div class="masthead">
+        <div class="container">
+          <h3 class="masthead-title">
+            <a href="/" title="Home">Srdan Rasic</a>
+            <small>A software engineer</small>
+          </h3>
+        </div>
+      </div>
+
+      <div class="container content">
+        <div class="post">
+  <h1 class="post-title">Implementing Reactive Delegates in Swift Powered by Objective-C</h1>
+  <span class="post-date">28 May 2016</span>
+  <p>I love statically typed languages. I was always more C++ than Objective-C guy. Knowing that I have compiler watching my back all the time makes me feel better about the code I write. The joy I felt back in 2014 watching Swift introductory streams at WWDC will probably stay with me for a long time.</p>
+
+<p>However, I’ve been facing Objective-C almost every day for more than three years now, and I’ve come to realise the power of dynamic aspects of the language. There are things you can do with Objective-C runtime today that are just not possible with pure Swift.<sup><a href="#fn1">1</a></sup> Think of KVO, method swizzling, UIAppearance, etc. I hope Swift will eventually also get there as I don’t think it necessarily makes Swift less <em>swifty</em>.</p>
+
+<p>One of those dynamic aspects is Message Forwarding. It allows you to do very cool stuff. The story follows.</p>
+
+<h2 id="the-pattern">The Pattern</h2>
+
+<p>Being focused on reactive paradigm I found myself fighting with the delegates. Delegation is one of few fundamental patterns in Cocoa development, but it has no place in reactive world. Code like</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="k">let</span> <span class="nv">didScroll</span> <span class="o">=</span> <span class="kt">PushStream</span><span class="o">&lt;</span><span class="kt">CGPoint</span><span class="o">&gt;</span><span class="p">()</span>
+
+<span class="kd">extension</span> <span class="kt">MyClass</span><span class="p">:</span> <span class="kt">UIScrollViewDelegate</span>  <span class="p">{</span>
+  <span class="kd">func</span> <span class="nf">scrollViewDidScroll</span><span class="p">(</span><span class="nv">scrollView</span><span class="p">:</span> <span class="kt">UIScrollView</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">didScroll</span><span class="o">.</span><span class="nf">next</span><span class="p">(</span><span class="n">scrollView</span><span class="o">.</span><span class="n">contentOffset</span><span class="p">)</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>started emerging from every corner. Having a stored property, a delegate object and a method felt wrong. And it is. Switching between paradigms in multi paradigm code should be easier. If a delegate method is used to inform us about an event, it should be simple to convert invocation of that method to a stream event.</p>
+
+<h2 id="message-forwarding">Message Forwarding</h2>
+
+<p>Cocoa and Cocoa Touch are written in Objective-C, the dynamically typed language. It means that the compiler doesn’t care much about types so you’re free to do wonders. iOS Developer Library puts it nicely:</p>
+
+<blockquote>
+  <p>Dynamic typing contrasts with static typing, in which the system explicitly identifies the class to which an object belongs at compile time. Static type checking at compile time may ensure stricter data integrity, but in exchange for that integrity, dynamic typing gives your program much greater flexibility.</p>
+</blockquote>
+
+<p>That flexibility is what we are going to leverage here. When a message is sent to an Objective-C object, it goes through a number of steps before it’s handled or rejected. The runtime first searches for the method implementation that the selector refers to. If it is found, it will be invoked with the arguments contained in the message (if any), but if it’s not found, well, that’s where the party begins. The runtime will invoke <code class="highlighter-rouge">forwardInvocation:</code> method on the object, giving us the opportunity to handle the message by ourselves. It’ll wrap the message in an <code class="highlighter-rouge">NSInvocation</code> object that contains all information needed to handle it.</p>
+
+<p>Invocation object contains the selector, method to read the passed arguments and a way to set the return value. <code class="highlighter-rouge">NSInvocation</code> is unfortunately not available in Swift so it needs to be handled in Objective-C subclass.</p>
+
+<p>Let’s say an object is sent a message <code class="highlighter-rouge">[person setAge:24]</code>. If the object class does implemented method <code class="highlighter-rouge">setAge:</code> you’ll see the infamous <code class="highlighter-rouge">unrecognized selector sent to instance</code> exception. Reason you see that is because the default implementation of <code class="highlighter-rouge">forwardInvocation:</code> just invokes <code class="highlighter-rouge">doesNotRecognizeSelector:</code> which in turn throws an exception with that message. We can, however, override <code class="highlighter-rouge">forwardInvocation:</code> and handle the message differently. Let’s just print some info.</p>
+
+<div class="language-objc highlighter-rouge"><pre class="highlight"><code><span class="k">@implementation</span> <span class="nc">Person</span> <span class="p">{</span>
+
+  <span class="o">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">forwardInvocation</span><span class="o">:</span><span class="p">(</span><span class="n">NSInvocation</span> <span class="o">*</span><span class="p">)</span><span class="n">invocation</span>
+  <span class="p">{</span>
+    <span class="n">NSLog</span><span class="p">(</span><span class="s">@"Selector: %@"</span><span class="p">,</span> <span class="n">NSStringFromSelector</span><span class="p">(</span><span class="n">invocation</span><span class="p">.</span><span class="n">selector</span><span class="p">));</span>
+    <span class="n">NSLog</span><span class="p">(</span><span class="s">@"Argument count: %d"</span><span class="p">,</span> <span class="n">invocation</span><span class="p">.</span><span class="n">methodSignature</span><span class="p">.</span><span class="n">numberOfArguments</span><span class="p">);</span>
+
+    <span class="n">NSInteger</span> <span class="n">arg1</span><span class="p">;</span>
+    <span class="p">[</span><span class="n">invocation</span> <span class="nf">getArgument</span><span class="p">:</span><span class="o">&amp;</span><span class="n">arg1</span> <span class="nf">atIndex</span><span class="p">:</span><span class="mi">2</span><span class="p">];</span>
+    <span class="n">NSLog</span><span class="p">(</span><span class="s">@"First argument: %d"</span><span class="p">,</span> <span class="n">arg1</span><span class="p">);</span>
+  <span class="p">}</span>
+
+<span class="k">@end</span>
+</code></pre>
+</div>
+
+<p>If we try to run this, well, it’ll not work, not yet. For the runtime to construct the <code class="highlighter-rouge">NSInvocation</code>, in addition to knowing the selector, it needs to know the method signature. Method signature is just a fancy name for method argument and return types. Selector defines method name, whereas signature defines its types. To provide method signature to the runtime, we need to override another class method.</p>
+
+<div class="language-objc highlighter-rouge"><pre class="highlight"><code><span class="k">-</span> <span class="p">(</span><span class="n">NSMethodSignature</span> <span class="o">*</span><span class="p">)</span><span class="nf">methodSignatureForSelector</span><span class="p">:(</span><span class="n">SEL</span><span class="p">)</span><span class="nv">selector</span>
+<span class="p">{</span>
+  <span class="k">return</span> <span class="p">[</span><span class="n">NSMethodSignature</span> <span class="nf">signatureWithObjCTypes</span><span class="p">:</span><span class="s">"v@:i"</span><span class="p">];</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p><code class="highlighter-rouge">NSMethodSignature</code> can be constructed with a C-style string of type encodings for the method arguments. In this example, <strong>v</strong> stands for <code class="highlighter-rouge">Void</code> return type, <strong>@</strong> represents self (the object) of type <code class="highlighter-rouge">id</code>, colon represents the selector and <strong>i</strong> represents the integer argument.</p>
+
+<p>Don’t concern yourself about the details of type encoding right now as it is not important to solve our delegates problem. If you are interested, you can read more about it <a href="https://developer.apple.com/library/mac/documentation/Cocoa/Conceptual/ObjCRuntimeGuide/Articles/ocrtTypeEncodings.html">here</a>.</p>
+
+<p>You might be wondering why we had to specify the type for self and the selector. Well, Objective-C is implemented on top of C and the compiler is utilising C functions for method implementations. You can think of an object method like a function that is accepting the object itself as the first argument and the selector as the second argument followed by the actual method arguments.</p>
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="kt">void</span> <span class="n">setAge</span><span class="p">(</span><span class="n">id</span> <span class="n">object</span><span class="p">,</span> <span class="n">SEL</span> <span class="n">selector</span><span class="p">,</span> <span class="n">NSInteger</span> <span class="n">age</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<p>If you’re interested in the details, Apple has a quick introduction to all this in their <a href="https://developer.apple.com/library/ios/documentation/Cocoa/Conceptual/ObjCRuntimeGuide/Introduction/Introduction.html#//apple_ref/doc/uid/TP40008048-CH1-SW1">documentation</a>.</p>
+
+<p>Calling <code class="highlighter-rouge">[person setAge:24]</code> now will work and it’ll print</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>Selector: setAge:
+Argument count: 3
+First argument: 24
+</code></pre>
+</div>
+
+<p>Notice that the first argument was read from index 2. I hope that the previous paragraphs made it clear why.</p>
+
+<h2 id="parsing-nsinvocation-in-swift">Parsing NSInvocation in Swift</h2>
+
+<p>As already mentioned, NSInvocation is not available in Swift, but we need to propagate it to Swift code that will send events to our streams. If you give it a bit thought, you’ll see that we don’t really need <code class="highlighter-rouge">NSInvocation</code>, but only parts of it. We need a selector and a way to read arguments. So let’s propagate just that.</p>
+
+<p>We’ll start by adding another method to our class that will receive a selector and a block that can be used to read the arguments.</p>
+
+<div class="language-objc highlighter-rouge"><pre class="highlight"><code><span class="k">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">invoke</span><span class="p">:(</span><span class="n">SEL</span><span class="p">)</span><span class="nv">selector</span> <span class="nf">argumentExtractor</span><span class="p">:(</span><span class="kt">void</span> <span class="p">(</span><span class="o">^</span><span class="p">)(</span><span class="n">NSInteger</span> <span class="n">index</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">))</span><span class="nv">argumentExtractor</span>
+<span class="p">{</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>Also, we’ll update <code class="highlighter-rouge">forwardInvocation</code> to call that method.</p>
+
+<div class="language-objc highlighter-rouge"><pre class="highlight"><code>  <span class="k">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">forwardInvocation</span><span class="p">:(</span><span class="n">NSInvocation</span> <span class="o">*</span><span class="p">)</span><span class="nv">invocation</span>
+  <span class="p">{</span>
+      <span class="p">[</span><span class="n">self</span> <span class="nf">invoke</span><span class="p">:</span><span class="n">invocation</span><span class="p">.</span><span class="n">selector</span> <span class="nf">argumentExtractor</span><span class="p">:</span><span class="o">^</span><span class="p">(</span><span class="n">NSInteger</span> <span class="n">index</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">)</span> <span class="p">{</span>
+        <span class="p">[</span><span class="n">invocation</span> <span class="nf">getArgument</span><span class="p">:</span><span class="n">buffer</span> <span class="nf">atIndex</span><span class="p">:</span><span class="n">index</span><span class="p">]</span><span class="err">;</span>
+      <span class="p">}];</span>
+  <span class="p">}</span>
+</code></pre>
+</div>
+
+<p>Next, we’ll subclass Person in Swift and override our <code class="highlighter-rouge">invoke:argumentExtractor:</code> method where we can handle the invocation.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">class</span> <span class="kt">SwiftPerson</span><span class="p">:</span> <span class="kt">Person</span> <span class="p">{</span>
+
+  <span class="k">override</span> <span class="kd">func</span> <span class="nf">invoke</span><span class="p">(</span><span class="nv">selector</span><span class="p">:</span> <span class="kt">Selector</span><span class="p">,</span> 
+              <span class="nv">argumentExtractor</span><span class="p">:</span> <span class="p">(</span><span class="kt">Int</span><span class="p">,</span> <span class="kt">UnsafeMutablePointer</span><span class="o">&lt;</span><span class="kt">Void</span><span class="o">&gt;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kt">Void</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">let</span> <span class="nv">arg1</span> <span class="o">=</span> <span class="kt">UnsafeMutablePointer</span><span class="o">&lt;</span><span class="kt">Int</span><span class="o">&gt;.</span><span class="nf">alloc</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="nf">argumentExtractor</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">a1</span><span class="p">)</span>
+    <span class="nf">print</span><span class="p">(</span><span class="s">"method </span><span class="se">\(</span><span class="n">selector</span><span class="se">)</span><span class="s"> invoked with argument </span><span class="se">\(</span><span class="n">arg1</span><span class="se">)</span><span class="s">"</span><span class="p">)</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>First we allocate some space for our argument and then extract it with the closure (block) we’re provided. Trick here is that we have to know the type of the argument, in our case <code class="highlighter-rouge">Int</code>.</p>
+
+<p>If we now call <code class="highlighter-rouge">[person setAge:24]</code> on an instance of <code class="highlighter-rouge">SwiftPerson</code> the console will print <em>method setAge: invoked with argument 24</em>. Calling <code class="highlighter-rouge">[person thisIsSoCool:111]</code> will print <em>method thisIsSoCool: invoked with argument 111</em>. Indeed it is!</p>
+
+<p>From now on it should be straightforward how to generalise this approach to implement reactive delegates.</p>
+
+<h2 id="generalising-the-pattern">Generalising the Pattern</h2>
+
+<p>Let’s now see how this is used in <a href="https://github.com/ReactiveKit/ReactiveKit">ReactiveKit</a> to implement reactive delegates.</p>
+
+<h3 id="base-class">Base Class</h3>
+
+<p>We have the type that can simulate any delegate. Its base is defined in Objective-C. We are simulating a protocol implementation (a delegate), so we need to know what protocol it is.</p>
+
+<div class="language-objc highlighter-rouge"><pre class="highlight"><code><span class="k">@interface</span> <span class="nc">RKProtocolProxyBase</span> <span class="p">()</span>
+<span class="k">@property</span> <span class="p">(</span><span class="n">nonatomic</span><span class="p">,</span> <span class="n">readwrite</span><span class="p">,</span> <span class="n">strong</span><span class="p">)</span> <span class="n">Protocol</span> <span class="o">*</span><span class="n">protocol</span><span class="p">;</span>
+<span class="k">@end</span>
+
+<span class="k">@implementation</span> <span class="nc">RKProtocolProxyBase</span>
+
+<span class="k">-</span> <span class="p">(</span><span class="n">instancetype</span><span class="p">)</span><span class="nf">initWithProtocol</span><span class="p">:(</span><span class="n">Protocol</span> <span class="o">*</span><span class="p">)</span><span class="nv">protocol</span>
+<span class="p">{</span>
+  <span class="n">self</span> <span class="o">=</span> <span class="p">[</span><span class="n">super</span> <span class="nf">init</span><span class="p">];</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">self</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">_protocol</span> <span class="o">=</span> <span class="n">protocol</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="k">return</span> <span class="n">self</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="p">...</span>
+</code></pre>
+</div>
+
+<p>Then we have an implementation of <code class="highlighter-rouge">methodSignatureForSelector:</code> method.</p>
+
+<div class="language-objc highlighter-rouge"><pre class="highlight"><code><span class="k">-</span> <span class="p">(</span><span class="n">NSMethodSignature</span> <span class="o">*</span><span class="p">)</span><span class="nf">methodSignatureForSelector</span><span class="p">:(</span><span class="n">SEL</span><span class="p">)</span><span class="nv">selector</span>
+<span class="p">{</span>
+  <span class="k">struct</span> <span class="n">objc_method_description</span> <span class="n">description</span> <span class="o">=</span> <span class="n">protocol_getMethodDescription</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="n">protocol</span><span class="p">,</span> <span class="n">selector</span><span class="p">,</span> <span class="nb">NO</span><span class="p">,</span> <span class="nb">YES</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">description</span><span class="p">.</span><span class="n">types</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span> <span class="p">{</span> 
+    <span class="n">description</span> <span class="o">=</span> <span class="n">protocol_getMethodDescription</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="n">protocol</span><span class="p">,</span> <span class="n">selector</span><span class="p">,</span> <span class="nb">YES</span><span class="p">,</span> <span class="nb">YES</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="k">return</span> <span class="p">[</span><span class="n">NSMethodSignature</span> <span class="nf">signatureWithObjCTypes</span><span class="p">:</span><span class="n">description</span><span class="p">.</span><span class="n">types</span><span class="p">];</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>We’re using Objective-C runtime to get the type encoding for a method of the given protocol. First we get method description by calling <code class="highlighter-rouge">protocol_getMethodDescription</code> with a protocol, method selector, boolean indicating whether the method is a required method or not and a boolean indicating whether the method is an instance method or not. We then instantiate <code class="highlighter-rouge">NSMethodSignature</code> with the type encoding contained in the description.</p>
+
+<p>I’m confused why the optionality indication is needed to get the method description. It’s not possible to have two methods of the same name in the protocol, one optional and other not, so I’m not clear where the ambiguity would come from. Anyway, as we support both optional and required methods, we just try another if  the first one fails.</p>
+
+<p>Finally, we have an implementation of <code class="highlighter-rouge">forwardInvocation:</code> method which is same as in the introduction.</p>
+
+<div class="language-objc highlighter-rouge"><pre class="highlight"><code><span class="k">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">forwardInvocation</span><span class="p">:(</span><span class="n">NSInvocation</span> <span class="o">*</span><span class="p">)</span><span class="nv">invocation</span>
+<span class="p">{</span>
+  <span class="p">[</span><span class="n">self</span> <span class="nf">invoke</span><span class="p">:</span><span class="n">invocation</span><span class="p">.</span><span class="n">selector</span> <span class="nf">argumentExtractor</span><span class="p">:</span><span class="o">^</span><span class="p">(</span><span class="n">NSInteger</span> <span class="n">index</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">)</span> <span class="p">{</span>
+    <span class="p">[</span><span class="n">invocation</span> <span class="nf">getArgument</span><span class="p">:</span><span class="n">buffer</span> <span class="nf">atIndex</span><span class="p">:</span><span class="n">index</span><span class="p">]</span><span class="err">;</span>
+  <span class="p">}</span> <span class="nf">setReturnValue</span><span class="p">:</span><span class="nb">nil</span><span class="p">];</span>
+<span class="p">}</span>
+
+<span class="k">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">invoke</span><span class="p">:(</span><span class="n">SEL</span><span class="p">)</span><span class="nv">selector</span> <span class="nf">argumentExtractor</span><span class="p">:(</span><span class="kt">void</span> <span class="p">(</span><span class="o">^</span><span class="p">)(</span><span class="n">NSInteger</span> <span class="n">index</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">buffer</span><span class="p">))</span><span class="nv">argumentExtractor</span>
+<span class="p">{</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h2 id="swift-class">Swift Class</h2>
+
+<p>Base class is subclassed in Swift.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="kt">ProtocolProxy</span><span class="p">:</span> <span class="kt">RKProtocolProxyBase</span> <span class="p">{</span>
+  
+  <span class="kd">private</span> <span class="kd">typealias</span> <span class="kt">Extractor</span> <span class="o">=</span> <span class="p">(</span><span class="kt">Int</span><span class="p">,</span> <span class="kt">UnsafeMutablePointer</span><span class="o">&lt;</span><span class="kt">Void</span><span class="o">&gt;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kt">Void</span>
+  
+  <span class="kd">private</span> <span class="k">var</span> <span class="nv">invokers</span><span class="p">:</span> <span class="p">[</span><span class="kt">Selector</span><span class="p">:</span> <span class="kt">Extractor</span> <span class="o">-&gt;</span> <span class="kt">Void</span><span class="p">]</span> <span class="o">=</span> <span class="p">[:]</span>
+  <span class="kd">private</span> <span class="k">var</span> <span class="nv">streams</span><span class="p">:</span> <span class="p">[</span><span class="kt">Selector</span><span class="p">:</span> <span class="kt">AnyObject</span><span class="p">]</span> <span class="o">=</span> <span class="p">[:]</span>
+
+  <span class="kd">public</span> <span class="nf">init</span><span class="p">(</span><span class="err">`</span><span class="kd">protocol</span><span class="err">`</span><span class="p">:</span> <span class="kt">Protocol</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">super</span><span class="o">.</span><span class="nf">init</span><span class="p">(</span><span class="nv">withProtocol</span><span class="p">:</span> <span class="err">`</span><span class="kd">protocol</span><span class="err">`</span><span class="p">)</span>
+  <span class="p">}</span>
+</code></pre>
+</div>
+
+<p>Dictionary <code class="highlighter-rouge">invokers</code> will contain selector-closure pairs. For a given selector, there will be a closure that updates a stream using the given argument extractor closure. Dictionary <code class="highlighter-rouge">streams</code> will store instances of <code class="highlighter-rouge">PushStream</code> type (publish subjects) that will be updated upon invocations of method for the given selector.</p>
+
+<p>Don’t worry, everything will become clear in a moment.</p>
+
+<p>Let’s begin with a method that provides a stream of invocations of a given selector.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code>  <span class="kd">public</span> <span class="kd">func</span> <span class="n">streamFor</span><span class="o">&lt;</span><span class="kt">T</span><span class="p">,</span> <span class="kt">Z</span><span class="o">&gt;</span><span class="p">(</span><span class="nv">selector</span><span class="p">:</span> <span class="kt">Selector</span><span class="p">,</span> <span class="nv">map</span><span class="p">:</span> <span class="kt">T</span> <span class="o">-&gt;</span> <span class="kt">Z</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kt">Stream</span><span class="o">&lt;</span><span class="kt">Z</span><span class="o">&gt;</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="k">let</span> <span class="nv">stream</span> <span class="o">=</span> <span class="n">streams</span><span class="p">[</span><span class="n">selector</span><span class="p">]</span> <span class="p">{</span>
+      <span class="nf">return</span> <span class="p">(</span><span class="n">stream</span> <span class="k">as!</span> <span class="kt">PushStream</span><span class="o">&lt;</span><span class="kt">Z</span><span class="o">&gt;</span><span class="p">)</span><span class="o">.</span><span class="nf">toStream</span><span class="p">()</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+      <span class="k">let</span> <span class="nv">pushStream</span> <span class="o">=</span> <span class="kt">PushStream</span><span class="o">&lt;</span><span class="kt">Z</span><span class="o">&gt;</span><span class="p">()</span>
+      <span class="n">streams</span><span class="p">[</span><span class="n">selector</span><span class="p">]</span> <span class="o">=</span> <span class="n">pushStream</span>
+      <span class="nf">registerInvoker</span><span class="p">(</span><span class="n">selector</span><span class="p">)</span> <span class="p">{</span> <span class="n">a1</span> <span class="k">in</span>
+        <span class="n">pushStream</span><span class="o">.</span><span class="nf">next</span><span class="p">(</span><span class="nf">map</span><span class="p">(</span><span class="n">a1</span><span class="p">))</span>
+      <span class="p">}</span>
+      <span class="k">return</span> <span class="n">pushStream</span><span class="o">.</span><span class="nf">toStream</span><span class="p">()</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+</code></pre>
+</div>
+
+<p>First we check if we already have such stream and just return it if we do. Otherwise, we create it, store it in the dictionary, register an invoker that will update it and finally we return the stream. As a bonus we provide a mapping function that will convert the type because this is needed more often than not.</p>
+
+<p>What about <code class="highlighter-rouge">registerInvoker</code> method? Well, here it is.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code>  <span class="kd">private</span> <span class="kd">func</span> <span class="n">registerInvoker</span><span class="o">&lt;</span><span class="kt">T</span><span class="p">,</span> <span class="kt">R</span><span class="o">&gt;</span><span class="p">(</span><span class="nv">selector</span><span class="p">:</span> <span class="kt">Selector</span><span class="p">,</span> <span class="nv">fire</span><span class="p">:</span> <span class="kt">T</span> <span class="o">-&gt;</span> <span class="kt">Void</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">invokers</span><span class="p">[</span><span class="n">selector</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span> <span class="n">extractor</span> <span class="k">in</span>
+      <span class="k">let</span> <span class="nv">a1</span> <span class="o">=</span> <span class="kt">UnsafeMutablePointer</span><span class="o">&lt;</span><span class="kt">T</span><span class="o">&gt;.</span><span class="nf">alloc</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+      <span class="nf">extractor</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">a1</span><span class="p">)</span>
+      <span class="nf">fire</span><span class="p">(</span><span class="n">a1</span><span class="o">.</span><span class="n">memory</span> <span class="k">as</span> <span class="kt">T</span><span class="p">)</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+</code></pre>
+</div>
+
+<p>For the given selector we store a closure that will be invoked when the selector is performed. The closure will get an argument extractor it’ll use to read the argument. First it allocates a memory to store the read argument to, writes the argument to that memory address and fires a closure with the just written argument.</p>
+
+<p>Only thing that’s left is to actually call those invokers. We’ll do that in an override.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code>  <span class="k">override</span> <span class="kd">func</span> <span class="nf">invoke</span><span class="p">(</span><span class="nv">selector</span><span class="p">:</span> <span class="kt">Selector</span><span class="p">,</span> <span class="nv">argumentExtractor</span><span class="p">:</span> <span class="p">(</span><span class="kt">Int</span><span class="p">,</span> <span class="kt">UnsafeMutablePointer</span><span class="o">&lt;</span><span class="kt">Void</span><span class="o">&gt;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kt">Void</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">guard</span> <span class="k">let</span> <span class="nv">invoker</span> <span class="o">=</span> <span class="n">invokers</span><span class="p">[</span><span class="n">selector</span><span class="p">]</span> <span class="k">else</span> <span class="p">{</span> <span class="k">return</span> <span class="p">}</span>
+    <span class="nf">invoker</span><span class="p">(</span><span class="n">argumentExtractor</span><span class="p">)</span>
+  <span class="p">}</span>
+</code></pre>
+</div>
+
+<p>And that’s it! Whenever a method that has a stream associated is invoked, we’ll send an event onto that stream with the mapped argument. Adding support for more than one argument should be obvious.</p>
+
+<p>To fully cover our marks, we can also override following methods:</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code>  <span class="kd">public</span> <span class="k">override</span> <span class="kd">func</span> <span class="nf">conformsToProtocol</span><span class="p">(</span><span class="err">`</span><span class="kd">protocol</span><span class="err">`</span><span class="p">:</span> <span class="kt">Protocol</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kt">Bool</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="nf">protocol_isEqual</span><span class="p">(</span><span class="err">`</span><span class="kd">protocol</span><span class="err">`</span><span class="p">,</span> <span class="k">self</span><span class="o">.</span><span class="err">`</span><span class="kd">protocol</span><span class="err">`</span><span class="p">)</span> <span class="p">{</span>
+      <span class="k">return</span> <span class="kc">true</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+      <span class="k">return</span> <span class="k">super</span><span class="o">.</span><span class="nf">conformsToProtocol</span><span class="p">(</span><span class="err">`</span><span class="kd">protocol</span><span class="err">`</span><span class="p">)</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+
+  <span class="kd">public</span> <span class="k">override</span> <span class="kd">func</span> <span class="nf">respondsToSelector</span><span class="p">(</span><span class="nv">selector</span><span class="p">:</span> <span class="kt">Selector</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kt">Bool</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="n">streams</span><span class="p">[</span><span class="n">selector</span><span class="p">]</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span>
+      <span class="k">return</span> <span class="kc">true</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+      <span class="k">return</span> <span class="k">super</span><span class="o">.</span><span class="nf">respondsToSelector</span><span class="p">(</span><span class="n">selector</span><span class="p">)</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h2 id="putting-it-all-into-practice">Putting It All Into Practice</h2>
+
+<p>Now we can just instantiate a delegate object instead implementing a delegate protocol. We can use that object to make method invocation streams. For example:</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="c1">// given</span>
+<span class="k">let</span> <span class="nv">scrollView</span><span class="p">:</span> <span class="kt">UIScrollView</span>
+
+<span class="c1">// create a delegate</span>
+<span class="k">let</span> <span class="nv">delegate</span> <span class="o">=</span> <span class="kt">ProtocolProxy</span><span class="p">(</span><span class="nv">protocol</span><span class="p">:</span> <span class="kt">UIScrollViewDelegate</span><span class="o">.</span><span class="k">self</span><span class="p">)</span>
+
+<span class="c1">// and set it</span>
+<span class="n">scrollView</span><span class="o">.</span><span class="n">delegate</span> <span class="o">=</span> <span class="n">delegate</span> <span class="k">as!</span> <span class="kt">UIScrollViewDelegate</span>
+</code></pre>
+</div>
+
+<p>ReactiveKit provides NSObject extension that can make delegate creation even simpler:</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="k">let</span> <span class="nv">delegate</span> <span class="o">=</span> <span class="n">scrollView</span><span class="o">.</span><span class="nf">protocolProxyFor</span><span class="p">(</span><span class="kt">UIScrollViewDelegate</span><span class="o">.</span><span class="k">self</span><span class="p">,</span> <span class="nv">setter</span><span class="p">:</span> <span class="kt">NSSelectorFromString</span><span class="p">(</span><span class="s">"setDelegate:"</span><span class="p">))</span>
+</code></pre>
+</div>
+
+<p>To get, for example, <code class="highlighter-rouge">didScroll</code> events, just take a stream for that delegate protocol method.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="k">let</span> <span class="nv">didScroll</span><span class="p">:</span> <span class="kt">Stream</span><span class="o">&lt;</span><span class="kt">CGPoint</span><span class="o">&gt;</span> <span class="o">=</span> <span class="n">delegate</span><span class="o">.</span><span class="nf">streamFor</span><span class="p">(</span><span class="err">#</span><span class="nf">selector</span><span class="p">(</span><span class="kt">UIScrollViewDelegate</span><span class="o">.</span><span class="nf">scrollViewDidScroll</span><span class="p">(</span><span class="nv">_</span><span class="p">:)))</span> <span class="p">{</span> <span class="p">(</span><span class="nv">scrollView</span><span class="p">:</span> <span class="kt">UIScrollView</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kt">CGPoint</span> <span class="k">in</span>
+  <span class="k">return</span> <span class="n">scrollView</span><span class="o">.</span><span class="n">contentOffset</span>
+<span class="p">}</span> 
+</code></pre>
+</div>
+
+<p>We’re probably interested in <code class="highlighter-rouge">contentOffset</code> of each scroll event so we’ll map scroll view into <code class="highlighter-rouge">CGPoint</code>.</p>
+
+<p>I’d recommend wrapping all this in an extension of the class we’re delegate of to make things nicer.</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="kd">extension</span> <span class="kt">UIScrollView</span> <span class="p">{</span>
+
+  <span class="k">var</span> <span class="nv">reactiveDelegate</span><span class="p">:</span> <span class="kt">ProtocolProxy</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="n">scrollView</span><span class="o">.</span><span class="nf">protocolProxyFor</span><span class="p">(</span><span class="kt">UIScrollViewDelegate</span><span class="o">.</span><span class="k">self</span><span class="p">,</span> <span class="nv">setter</span><span class="p">:</span> <span class="kt">NSSelectorFromString</span><span class="p">(</span><span class="s">"setDelegate:"</span><span class="p">))</span>
+  <span class="p">}</span>
+
+  <span class="k">var</span> <span class="nv">didScroll</span><span class="p">:</span> <span class="kt">Stream</span><span class="o">&lt;</span><span class="kt">CGPoint</span><span class="o">&gt;</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="n">reactiveDelegate</span><span class="o">.</span><span class="nf">streamFor</span><span class="p">(</span><span class="err">#</span><span class="nf">selector</span><span class="p">(</span><span class="kt">UIScrollViewDelegate</span><span class="o">.</span><span class="nf">scrollViewDidScroll</span><span class="p">(</span><span class="nv">_</span><span class="p">:)))</span> <span class="p">{</span> <span class="p">(</span><span class="nv">scrollView</span><span class="p">:</span> <span class="kt">UIScrollView</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kt">CGPoint</span> <span class="k">in</span>
+      <span class="k">return</span> <span class="n">scrollView</span><span class="o">.</span><span class="n">contentOffset</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>Now, look at</p>
+
+<div class="language-swift highlighter-rouge"><pre class="highlight"><code><span class="n">scrollView</span><span class="o">.</span><span class="n">didScroll</span><span class="o">.</span><span class="n">observeNext</span> <span class="p">{</span> <span class="n">contentOffset</span> <span class="k">in</span>
+  <span class="nf">print</span><span class="p">(</span><span class="s">"scroll view did scroll to </span><span class="se">\(</span><span class="n">contentOffset</span><span class="se">)</span><span class="s">"</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>and enjoy the beauty of it!</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>The implementation shown here is a stripped version from ReactiveKit. Check out <a href="https://github.com/ReactiveKit/ReactiveKit/blob/master/ReactiveKit/RKProtocolProxyBase.h">this</a>, <a href="https://github.com/ReactiveKit/ReactiveKit/blob/master/ReactiveKit/RKProtocolProxyBase.m">this</a> and <a href="https://github.com/ReactiveKit/ReactiveKit/blob/master/Sources/ProtocolProxy.swift">this</a> for full implementation with multiple arguments and methods with return values. Reactive delegates were released with ReactiveKit v2 so this is the first implementation. It could see some additions in future. For more info, check out the <a href="https://github.com/ReactiveKit/ReactiveKit#reactive-delegates">documentation</a>.</p>
+
+<p>Exploring Objective-C runtime and putting it to use these days when all the hype is focused on Swift was fun and educational experience. It reminded me how powerful dynamically typed languages can be and left me with a hope that Swift will see at least some of it in the future.</p>
+
+<p>If you have any questions or suggestions around this feel free to leave a comment or contact me at <a href="https://twitter.com/srdanrasic">@srdanrasic</a>.</p>
+
+<p><a name="fn1">1</a>: <em>Not possible without Objective-C dependency, i.e. NSObject super-type.</em></p>
+
+</div>
+
+<!-- Share links section -->
+<!-- Go to www.addthis.com/dashboard to customize your tools -->
+<script type="text/javascript" src="//s7.addthis.com/js/300/addthis_widget.js#pubid=ra-5741886ff6c25748"></script>
+
+
+<!-- Disqus comments -->
+
+    <section class="disqus">
+    <div id="disqus_thread"></div>
+    <script type="text/javascript">
+
+        var disqus_shortname = 'rasicinfo'; 
+        var disqus_developer = 0; // developer mode is on
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</section>
+
+
+<div class="related">
+  <h2>Related Posts</h2>
+  <ul class="related-posts">
+    
+      <li>
+        <h3>
+          <a href="/a-different-take-on-mvvm-with-swift/">
+            A Different Take on MVVM with Swift
+            <small>31 May 2016</small>
+          </a>
+        </h3>
+      </li>
+    
+      <li>
+        <h3>
+          <a href="/solving-the-ios-binding-problem-with-swift/">
+            Solving the iOS Binding Problem with Swift
+            <small>19 Feb 2015</small>
+          </a>
+        </h3>
+      </li>
+    
+      <li>
+        <h3>
+          <a href="/bindings-generics-swift-and-mvvm/">
+            Bindings, Generics, Swift and MVVM
+            <small>10 Dec 2014</small>
+          </a>
+        </h3>
+      </li>
+    
+  </ul>
+</div>
+
+      </div>
+    </div>
+
+    <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+
+    <script>
+      (function(document) {
+        var toggle = document.querySelector('.sidebar-toggle');
+        var sidebar = document.querySelector('#sidebar');
+        var checkbox = document.querySelector('#sidebar-checkbox');
+
+        document.addEventListener('click', function(e) {
+          var target = e.target;
+
+          if(!checkbox.checked ||
+             sidebar.contains(target) ||
+             (target === checkbox || target === toggle)) return;
+
+          checkbox.checked = false;
+        }, false);
+      })(document);
+    </script>
+
+    <!-- Google Analytics Tracking code -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-48112103-2', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>
